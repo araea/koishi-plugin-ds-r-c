@@ -266,7 +266,7 @@ export async function apply(ctx: Context, cfg: Config) {
   // zjj*
   ctx.middleware(async (session, next) => {
     const content = `${h.select(session.event.message.elements, 'text')}`;
-    const {name: roomName, content: text} =extractNameAndContent(content);
+    const {name: roomName, content: text} = extractNameAndContent(content);
     if (!text) {
       return await next();
     }
@@ -293,7 +293,7 @@ export async function apply(ctx: Context, cfg: Config) {
         messages,
       })
 
-      const content = (await chatCompletions(messages)).replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+      let content = await chatCompletions(messages);
 
       if (!content) {
         await ctx.database.set('ds_r_c_room', {
@@ -304,6 +304,7 @@ export async function apply(ctx: Context, cfg: Config) {
         return sendMsg(session, '请重试');
       }
 
+      content = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
       const buffer = await md2img(content);
       await sendMsg(session, `${roomName} ${messages.length}\n${h.image(buffer, 'image/png')}`)
 
@@ -695,7 +696,7 @@ dsrc.重新回复 哮天犬`);
         isWaiting: true,
       });
 
-      const content = (await chatCompletions(messages)).replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+      let content = await chatCompletions(messages);
       if (!content) {
         await ctx.database.set('ds_r_c_room', {
           name: roomName,
@@ -705,6 +706,7 @@ dsrc.重新回复 哮天犬`);
         return sendMsg(session, '请重试');
       }
 
+      content = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
       const buffer = await md2img(content);
       await sendMsg(session, `${roomName} ${messagesWithoutLastAssistant.length}\n${h.image(buffer, 'image/png')}`)
 
@@ -966,7 +968,7 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
     const name = parts[0];
     const content = parts.length > 1 ? parts.slice(1).join(" ") : "";
 
-    return { name, content };
+    return {name, content};
   }
 
   function truncateContent(content: string): string {
