@@ -332,6 +332,8 @@ export async function apply(ctx: Context, cfg: Config) {
 dsrc.创建房间 哮天犬 你是一只哮天犬`);
       }
 
+      roomName = roomName.trim();
+
       if (roomName.length > 5) {
         return await sendMsg(session, '房间名不能超过 5 个字符');
       }
@@ -374,6 +376,8 @@ ${roomName} 你好啊
 示例：
 dsrc.复制房间 哮天犬 大狗狗`);
       }
+
+      newName = newName.trim();
 
       if (newName.length > 5) {
         return await sendMsg(session, '房间名不能超过 5 个字符');
@@ -633,6 +637,8 @@ dsrc.修改房间预设 哮天犬 你现在是一条魅魔 m 属性哮天犬`);
 示例：
 dsrc.修改房间名 哮天犬 大狗狗`);
       }
+
+      newName = newName.trim();
 
       if (newName.length > 5) {
         return await sendMsg(session, '房间名不能超过 5 个字符');
