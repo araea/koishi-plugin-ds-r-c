@@ -1034,6 +1034,8 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
       background-color: rgba(0,0,0,0.05);
       padding: 0.2em 0.4em;
       border-radius: 4px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
     }
 
     .poster-content pre {
@@ -1042,6 +1044,9 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
       padding: 1.5em;
       border-radius: 8px;
       overflow-x: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      max-width: 100%;
     }
 
     .poster-content pre code {
