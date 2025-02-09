@@ -84,6 +84,7 @@ interface Room {
   isOpen: boolean;
   isWaiting: boolean;
   messages: Message[];
+  msgId: string;
 }
 
 interface Message {
@@ -103,6 +104,7 @@ export async function apply(ctx: Context, cfg: Config) {
     isOpen: 'boolean',
     isWaiting: 'boolean',
     messages: {type: 'json', initial: []},
+    msgId: 'string',
   }, {autoInc: true, primary: 'id'});
 
   // cl*
@@ -169,24 +171,27 @@ export async function apply(ctx: Context, cfg: Config) {
       let content = await chatCompletions(messages);
 
       if (!content) {
+        const msgId = await sendMsg(session, '请重试', true);
         await ctx.database.set('ds_r_c_room', {
           name: roomName,
         }, {
           isWaiting: false,
+          msgId,
         });
-        return sendMsg(session, '请重试');
+        return
       }
 
       content = removeContentBeforeLastThinkTag(content);
 
       const buffer = await md2img(content);
-      await sendMsg(session, `${roomName} ${messages.length}\n${h.image(buffer, 'image/png')}`)
+      const msgId = await sendMsg(session, `${roomName} ${messages.length}\n${h.image(buffer, 'image/png')}`, true)
 
       await ctx.database.set('ds_r_c_room', {
         name: roomName,
       }, {
         isWaiting: false,
         messages: [...messages, {role: 'assistant', content: content}],
+        msgId,
       });
     }
   });
@@ -541,6 +546,14 @@ dsrc.修改房间名 哮天犬 大狗狗`);
   ctx
     .command('dsrc.重新回复 <roomName:string>')
     .action(async ({session}, roomName) => {
+      if (!roomName && session.event.message.quote) {
+        const quote = session.event.message.quote;
+        const msgId = quote.id;
+        const rooms = await ctx.database.get('ds_r_c_room', {msgId});
+        if (rooms.length > 0) {
+          roomName = rooms[0].name;
+        }
+      }
       if (!roomName) {
         return await sendMsg(session, `dsrc.重新回复 房间名
 
@@ -578,24 +591,27 @@ dsrc.重新回复 哮天犬`);
 
       let content = await chatCompletions(messagesWithoutLastAssistant);
       if (!content) {
+        const msgId = await sendMsg(session, '请重试', true);
         await ctx.database.set('ds_r_c_room', {
           name: roomName,
         }, {
           isWaiting: false,
+          msgId,
         });
-        return sendMsg(session, '请重试');
+        return
       }
 
       content = removeContentBeforeLastThinkTag(content);
 
       const buffer = await md2img(content);
-      await sendMsg(session, `${roomName} ${messagesWithoutLastAssistant.length}\n${h.image(buffer, 'image/png')}`)
+      const msgId = await sendMsg(session, `${roomName} ${messagesWithoutLastAssistant.length}\n${h.image(buffer, 'image/png')}`, true)
 
       await ctx.database.set('ds_r_c_room', {
         name: roomName,
       }, {
         messages: [...messagesWithoutLastAssistant, {role: 'assistant', content}],
         isWaiting: false,
+        msgId,
       });
     });
 
@@ -637,6 +653,15 @@ dsrc.重新回复 哮天犬`);
   ctx
     .command('dsrc.删除某个房间的全部聊天记录 <roomName:string>')
     .action(async ({session}, roomName) => {
+      if (!roomName && session.event.message.quote) {
+        const quote = session.event.message.quote;
+        const msgId = quote.id;
+        const rooms = await ctx.database.get('ds_r_c_room', {msgId});
+        if (rooms.length > 0) {
+          roomName = rooms[0].name;
+        }
+      }
+
       if (!roomName) {
         return await sendMsg(session, `dsrc.删除某个房间的全部聊天记录 房间名
 
@@ -667,15 +692,17 @@ dsrc.删除某个房间的全部聊天记录 哮天犬`);
       return await sendMsg(session, `成功删除 ${roomName} 的聊天记录`);
     });
 
-  // scmtltjl*
+  // scdtltjl*
   ctx
-    .command('dsrc.删除某条聊天记录 <roomName:string> <index:number>')
-    .action(async ({session}, roomName, index) => {
-      if (!roomName || !index) {
-        return await sendMsg(session, `dsrc.删除某条聊天记录 房间名 索引
+    .command('dsrc.删除多条聊天记录 <roomName:string> <indexes:text>')
+    .action(async ({session}, roomName, indexes) => {
+      if (!roomName || !indexes) {
+        return await sendMsg(session, `dsrc.删除多条聊天记录 房间名 索引列表
 
 示例：
-dsrc.删除某条聊天记录 哮天犬 2`);
+dsrc.删除多条聊天记录 哮天犬 2、3、5
+dsrc.删除多条聊天记录 哮天犬 2 3 5
+dsrc.删除多条聊天记录 哮天犬 2,3,5`);
       }
 
       const rooms = await ctx.database.get('ds_r_c_room', {name: roomName});
@@ -691,13 +718,19 @@ dsrc.删除某条聊天记录 哮天犬 2`);
       if (!room.isOpen && room.master !== session.userId) {
         return await sendMsg(session, '只有房主可以操作');
       }
-
       const messages = room.messages;
-      if (index < 1 || index >= messages.length) {
+      //解析索引
+      const indexList = indexes.split(/[\s,，、]+/).map(Number).filter(index => index >= 1 && index < messages.length);
+
+      if (indexList.length === 0) {
         return await sendMsg(session, '索引超出范围');
       }
-
-      messages.splice(index, 1);
+      // 倒序排列索引
+      indexList.sort((a, b) => b - a);
+      // 删除索引
+      for (const index of indexList) {
+        messages.splice(index, 1);
+      }
 
       await ctx.database.set('ds_r_c_room', {
         name: roomName,
@@ -705,7 +738,7 @@ dsrc.删除某条聊天记录 哮天犬 2`);
         messages,
       });
 
-      return await sendMsg(session, `成功删除 ${roomName} 的第 ${index} 条聊天记录`);
+      return await sendMsg(session, `成功删除 ${roomName} 的 ${indexList.join('、')} 条聊天记录`);
     });
 
   // xgmtlrjl*
@@ -781,10 +814,10 @@ dsrc.查看某条聊天记录 哮天犬 2`);
     .command('dsrc.查看某个房间的全部聊天记录 <roomName:string>')
     .action(async ({session}, roomName) => {
       if (!roomName) {
-        return await sendMsg(session, `dsrc.查看某个房间的全部聊天机录 房间名
+        return await sendMsg(session, `dsrc.查看某个房间的全部聊天记录 房间名
 
 示例：
-dsrc.查看某个房间的全部聊天机录 哮天犬`);
+dsrc.查看某个房间的全部聊天记录 哮天犬`);
       }
 
       const rooms = await ctx.database.get('ds_r_c_room', {name: roomName});
@@ -798,15 +831,33 @@ dsrc.查看某个房间的全部聊天机录 哮天犬`);
       if (messages.length === 0) {
         return await sendMsg(session, '没有消息');
       }
-
-      let msg = '';
-
       messages.splice(0, 1);
-      for (const [index, message] of messages.entries()) {
-        msg += `# ${index + 1} ${message.role}\n${message.content}\n\n\n---\n\n`;
+
+      const chunkSize = 20;
+      const numChunks = Math.ceil(messages.length / chunkSize);
+
+      for (let i = 0; i < numChunks; i++) {
+        const start = i * chunkSize;
+        const end = start + chunkSize;
+        const chunk = messages.slice(start, end);
+
+        let msg = '';
+        for (const [index, message] of chunk.entries()) {
+          msg += `# ${start + index + 1} ${message.role}\n${message.content}\n\n\n---\n\n`;
+        }
+
+        try {
+          const buffer = await md2img(msg);
+          // await sendMsg(session, `正在发送第 ${i + 1} / ${numChunks} 组聊天记录...`);
+          await sendMsg(session, h.image(buffer, 'image/png'));
+
+        } catch (error) {
+          logger.error(`Error processing chunk ${i + 1}:`, error);
+          await sendMsg(session, `发送第 ${i + 1} 组聊天记录时出错: ${error.message || error}`);
+          // break; // 中断循环
+          continue;  //继续
+        }
       }
-      const buffer = await md2img(msg);
-      await sendMsg(session, h.image(buffer, 'image/png'))
     });
 
   // ckmgfjdltjlgk*
@@ -831,15 +882,33 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
       if (messages.length === 0) {
         return await sendMsg(session, '没有消息');
       }
-
-      let msg = '';
-
       messages.splice(0, 1);
-      for (const [index, message] of messages.entries()) {
-        msg += `# ${index + 1} ${message.role}\n${truncateContent(message.content)}\n\n\n---\n\n`;
+
+      const chunkSize = 50;
+      const numChunks = Math.ceil(messages.length / chunkSize);
+
+      for (let i = 0; i < numChunks; i++) {
+        const start = i * chunkSize;
+        const end = start + chunkSize;
+        const chunk = messages.slice(start, end);
+
+        let msg = '';
+        for (const [index, message] of chunk.entries()) {
+          msg += `# ${index + 1} ${message.role}\n${truncateContent(message.content)}\n\n\n---\n\n`;
+        }
+
+        try {
+          const buffer = await md2img(msg);
+          // await sendMsg(session, `正在发送第 ${i + 1} / ${numChunks} 组聊天记录...`);
+          await sendMsg(session, h.image(buffer, 'image/png'));
+
+        } catch (error) {
+          logger.error(`Error processing chunk ${i + 1}:`, error);
+          await sendMsg(session, `发送第 ${i + 1} 组聊天记录时出错: ${error.message || error}`);
+          // break; // 中断循环
+          continue;  //继续
+        }
       }
-      const buffer = await md2img(msg);
-      await sendMsg(session, h.image(buffer, 'image/png'))
     });
 
   // hs*
@@ -1166,7 +1235,7 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
     return buffer;
   }
 
-  async function sendMsg(session: Session, msg: any) {
+  async function sendMsg(session: Session, msg: any, isReturnMsgId = false) {
     if (cfg.atReply) {
       msg = `${h.at(session.userId)}${h('p', '')}${msg}`;
     }
@@ -1175,7 +1244,10 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
       msg = `${h.quote(session.messageId)}${msg}`;
     }
 
-    await session.send(msg);
+    const [msgId] = await session.send(msg);
+    if (isReturnMsgId) {
+      return msgId;
+    }
   }
 
 }
