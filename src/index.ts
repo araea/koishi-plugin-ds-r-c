@@ -544,9 +544,8 @@ dsrc.修改房间名 哮天犬 大狗狗`);
 
   // cxhf*
   ctx
-    .command('dsrc.重新回复 <roomName:text>')
+    .command('dsrc.重新回复 <roomName:text>', {captureQuote: false})
     .action(async ({session}, roomName) => {
-      roomName = `${h.select(roomName, 'text')}`;
       if (!roomName && session.event.message.quote) {
         const quote = session.event.message.quote;
         const msgId = quote.id;
@@ -652,9 +651,8 @@ dsrc.重新回复 哮天犬`);
 
   // scmgfjdqbltjl*
   ctx
-    .command('dsrc.删除某个房间的全部聊天记录 <roomName:text>')
+    .command('dsrc.删除某个房间的全部聊天记录 <roomName:text>', {captureQuote: false})
     .action(async ({session}, roomName) => {
-      roomName = `${h.select(roomName, 'text')}`;
       if (!roomName && session.event.message.quote) {
         const quote = session.event.message.quote;
         const msgId = quote.id;
