@@ -177,7 +177,8 @@ export async function apply(ctx: Context, cfg: Config) {
         return sendMsg(session, '请重试');
       }
 
-      content = content.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<\/think>[\s\S]*?<\/think>/g, '').trim();
+      content = removeContentBeforeLastThinkTag(content.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<\/think>[\s\S]*?<\/think>/g, ''));
+
       const buffer = await md2img(content);
       await sendMsg(session, `${roomName} ${messages.length}\n${h.image(buffer, 'image/png')}`)
 
@@ -575,7 +576,7 @@ dsrc.重新回复 哮天犬`);
         isWaiting: true,
       });
 
-      let content = await chatCompletions(messages);
+      let content = await chatCompletions(messagesWithoutLastAssistant);
       if (!content) {
         await ctx.database.set('ds_r_c_room', {
           name: roomName,
@@ -585,7 +586,7 @@ dsrc.重新回复 哮天犬`);
         return sendMsg(session, '请重试');
       }
 
-      content = content.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<\/think>[\s\S]*?<\/think>/g, '').trim();
+      content = removeContentBeforeLastThinkTag(content.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<\/think>[\s\S]*?<\/think>/g, ''));
 
       const buffer = await md2img(content);
       await sendMsg(session, `${roomName} ${messagesWithoutLastAssistant.length}\n${h.image(buffer, 'image/png')}`)
@@ -842,6 +843,16 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
     });
 
   // hs*
+  function removeContentBeforeLastThinkTag(content: string): string {
+    const lastThinkTagIndex = content.lastIndexOf("</think>");
+
+    if (lastThinkTagIndex !== -1) {
+      return content.substring(lastThinkTagIndex + "</think>".length).trim();
+    } else {
+      return content.trim();
+    }
+  }
+
   function generateBackgroundPattern(): string {
     return `
     background-image: linear-gradient(0deg, rgba(0,0,0,0.02) 1px, transparent 1px);
