@@ -111,32 +111,6 @@ export async function apply(ctx: Context, cfg: Config) {
   const logger = ctx.logger('ds-r-c')
   const rooms = await ctx.database.get('ds_r_c_room', {});
   let roomNames = rooms.map(room => room.name);
-  const FONT_SIZES = {
-    h1: '72px',    // 增大标题更有视觉层次
-    h2: '56px',    // 副标题也相应增大
-    h3: '44px',    // 三级标题适度增大
-    text: '22px'   // 正文采用易读的大小
-  } as const;
-
-  const COLORS = {
-    text: '#2c3e50',      // 深色但不纯黑，降低对比度
-    background: '#fff',   // 纯白背景最不干扰阅读
-    accent: '#155e75',    // 强调色，用于链接和重点
-    muted: '#64748b'      // 次要文字颜色
-  } as const;
-
-  const LAYOUT = {
-    maxWidth: '780px',    // 适合阅读的最大宽度
-    minHeight: '100vh',   // 让内容至少占满屏幕
-    padding: '60px',      // 适当的留白
-    borderRadius: '8px',  // 柔和的圆角
-    fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',  // 优化字体堆栈
-    lineHeight: {
-      heading: 1.3,       // 标题行高略小
-      text: 1.7          // 正文行高增大提高可读性
-    }
-  } as const;
-
 
   // zjj*
   ctx.middleware(async (session, next) => {
@@ -925,126 +899,145 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
   function generateBackgroundPattern(): string {
     return `
     background-image: linear-gradient(0deg, rgba(0,0,0,0.02) 1px, transparent 1px);
-    background-size: 100% 2em;
+    background-size: 100% 2.2em;
   `;
   }
 
   function generateStyles(): string {
+    const TYPOGRAPHY = {
+      fonts: {
+        text: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+        heading: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+      },
+      sizes: {
+        text: '24px',
+        h1: '56px',
+        h2: '44px',
+        h3: '36px'
+      },
+      lineHeight: {
+        text: '1.8',
+        heading: '1.4'
+      }
+    } as const;
+
+    const COLORS = {
+      text: '#111827',
+      textLight: '#4B5563',
+      background: '#ffffff',
+      surface: '#f8fafc',
+      accent: '#1e40af'
+    } as const;
+
+    const SPACING = {
+      paragraph: '2em',
+      section: '3.5em',
+      container: '4rem'
+    } as const;
+
     return `
     body {
       margin: 0;
-      padding: 20px;
-      background-color: #f8fafc;
+      padding: 0;
+      background-color: ${COLORS.surface};
+      min-height: 100vh;
     }
 
     .poster-container {
       width: 100%;
-      max-width: ${LAYOUT.maxWidth};
-      min-height: ${LAYOUT.minHeight};
-      padding: ${LAYOUT.padding};
+      max-width: 1000px;
+      min-height: 98vh;
+      margin: 1vh auto;
+      padding: ${SPACING.container};
       background-color: ${COLORS.background};
-      border-radius: ${LAYOUT.borderRadius};
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 8px 32px -8px rgba(0,0,0,0.05);
-      margin: 0 auto;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.08);
       ${generateBackgroundPattern()}
     }
 
     .poster-content {
-      font-family: ${LAYOUT.fontFamily};
+      max-width: 800px;
+      margin: 0 auto;
+      font-family: ${TYPOGRAPHY.fonts.text};
+      font-size: ${TYPOGRAPHY.sizes.text};
+      line-height: ${TYPOGRAPHY.lineHeight.text};
       color: ${COLORS.text};
-      font-size: ${FONT_SIZES.text};
-      line-height: ${LAYOUT.lineHeight.text};
-      font-weight: 400;
       text-rendering: optimizeLegibility;
       -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
+      font-weight: 400;
     }
 
     .poster-content h1,
     .poster-content h2,
     .poster-content h3 {
-      color: ${COLORS.accent};
+      font-family: ${TYPOGRAPHY.fonts.heading};
       font-weight: 700;
+      line-height: ${TYPOGRAPHY.lineHeight.heading};
+      color: ${COLORS.text};
       letter-spacing: -0.02em;
-      margin-top: 2em;
-      margin-bottom: 0.8em;
-      line-height: ${LAYOUT.lineHeight.heading};
     }
 
     .poster-content h1 {
-      font-size: ${FONT_SIZES.h1};
-      margin-top: 0;
+      font-size: ${TYPOGRAPHY.sizes.h1};
+      margin: 0 0 ${SPACING.section};
     }
 
     .poster-content h2 {
-      font-size: ${FONT_SIZES.h2};
+      font-size: ${TYPOGRAPHY.sizes.h2};
+      margin: ${SPACING.section} 0 ${SPACING.paragraph};
     }
 
     .poster-content h3 {
-      font-size: ${FONT_SIZES.h3};
+      font-size: ${TYPOGRAPHY.sizes.h3};
+      margin: ${SPACING.section} 0 ${SPACING.paragraph};
     }
 
     .poster-content p {
-      margin: 1.5em 0;
-    }
-
-    .poster-content ul,
-    .poster-content ol {
-      padding-left: 1.5em;
-      margin: 1.5em 0;
-    }
-
-    .poster-content li {
-      margin: 0.5em 0;
-      padding-left: 0.5em;
+      margin: 0 0 ${SPACING.paragraph};
     }
 
     .poster-content a {
       color: ${COLORS.accent};
       text-decoration: none;
-      border-bottom: 2px solid rgba(21, 94, 117, 0.2);
-      transition: border-color 0.2s ease;
-    }
-
-    .poster-content a:hover {
-      border-color: ${COLORS.accent};
+      border-bottom: 2px solid rgba(30, 64, 175, 0.3);
     }
 
     .poster-content strong {
       font-weight: 600;
-      color: ${COLORS.accent};
+      color: ${COLORS.text};
     }
 
     .poster-content em {
       font-style: italic;
-      color: ${COLORS.muted};
+      color: ${COLORS.textLight};
     }
 
     .poster-content blockquote {
-      margin: 2em 0;
-      padding: 1em 2em;
+      margin: ${SPACING.section} 0;
+      padding: 1.5em 2em;
       border-left: 4px solid ${COLORS.accent};
-      background-color: rgba(21, 94, 117, 0.05);
+      background-color: rgba(30, 64, 175, 0.04);
       font-style: italic;
     }
 
     .poster-content code {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 0.9em;
-      background-color: rgba(0,0,0,0.05);
+      font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+      font-size: 0.92em;
+      background-color: rgba(0,0,0,0.04);
       padding: 0.2em 0.4em;
       border-radius: 4px;
-      white-space: pre-wrap;
+       white-space: pre-wrap;
       word-wrap: break-word;
     }
 
     .poster-content pre {
       background-color: #1a1a1a;
-      color: #fff;
-      padding: 1.5em;
+      color: #ffffff;
+      padding: 2em;
       border-radius: 8px;
       overflow-x: auto;
-      white-space: pre-wrap;
+      font-size: 0.92em;
+      line-height: 1.6;
+       white-space: pre-wrap;
       word-wrap: break-word;
       max-width: 100%;
     }
@@ -1053,40 +1046,6 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
       background-color: transparent;
       padding: 0;
       color: inherit;
-    }
-
-    .poster-content img {
-      max-width: 100%;
-      height: auto;
-      border-radius: 4px;
-      margin: 2em 0;
-    }
-
-    @media (max-width: 768px) {
-      body {
-        padding: 0;
-      }
-
-      .poster-container {
-        padding: 40px 20px;
-        border-radius: 0;
-      }
-
-      .poster-content {
-        font-size: 18px;
-      }
-
-      .poster-content h1 { font-size: 48px; }
-      .poster-content h2 { font-size: 36px; }
-      .poster-content h3 { font-size: 28px; }
-    }
-
-    @media print {
-      .poster-container {
-        box-shadow: none;
-        width: 100%;
-        min-height: auto;
-      }
     }
   `;
   }
@@ -1234,7 +1193,7 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
     const page = await ctx.puppeteer.page()
     await page.setContent(html)
     await page.bringToFront()
-    await page.setViewport({width: 800, height: 600});
+    await page.setViewport({width: 800, height: 400});
     const buffer = await page.screenshot({fullPage: true});
     await page.close();
     return buffer;
