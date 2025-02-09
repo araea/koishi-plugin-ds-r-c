@@ -807,7 +807,7 @@ dsrc.查看某个房间的全部聊天记录 哮天犬`);
       }
       messages.splice(0, 1);
 
-      const chunkSize = 20;
+      const chunkSize = 15;
       const numChunks = Math.ceil(messages.length / chunkSize);
 
       for (let i = 0; i < numChunks; i++) {
@@ -858,7 +858,7 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
       }
       messages.splice(0, 1);
 
-      const chunkSize = 50;
+      const chunkSize = 30;
       const numChunks = Math.ceil(messages.length / chunkSize);
 
       for (let i = 0; i < numChunks; i++) {
@@ -898,69 +898,69 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
 
   function generateBackgroundPattern(): string {
     return `
-    background-image: linear-gradient(0deg, rgba(0,0,0,0.02) 1px, transparent 1px);
-    background-size: 100% 2.2em;
+    background-image: linear-gradient(0deg, rgba(0,0,0,0.03) 1px, transparent 1px);
+    background-size: 100% 2.5em;
   `;
   }
 
   function generateStyles(): string {
-    const TYPOGRAPHY = {
-      fonts: {
-        text: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-        heading: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
-      },
+    const FONT_STYLES = {
+      text: '"Source Sans Pro", sans-serif',
+      heading: '"Source Sans Pro", sans-serif',
       sizes: {
-        text: '24px',
-        h1: '56px',
-        h2: '44px',
-        h3: '36px'
+        text: '30px',
+        h1: '64px',
+        h2: '52px',
+        h3: '42px',
       },
       lineHeight: {
-        text: '1.8',
-        heading: '1.4'
-      }
+        text: '2.0',
+        heading: '1.5',
+      },
     } as const;
 
-    const COLORS = {
-      text: '#111827',
-      textLight: '#4B5563',
-      background: '#ffffff',
-      surface: '#f8fafc',
-      accent: '#1e40af'
+    const COLOR_PALETTE = {
+      text: '#2d3748',
+      textLight: '#718096',
+      background: '#f9f9f9',
+      surface: '#ffffff',
+      accent: '#2563eb',
     } as const;
 
-    const SPACING = {
-      paragraph: '2em',
-      section: '3.5em',
-      container: '4rem'
+    const LAYOUT_SPACING = {
+      paragraph: '2.5em',
+      section: '4em',
+      container: '5rem',
     } as const;
 
     return `
+    @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;700&display=swap');
+
     body {
       margin: 0;
       padding: 0;
-      background-color: ${COLORS.surface};
+      background-color: ${COLOR_PALETTE.surface};
       min-height: 100vh;
     }
 
     .poster-container {
       width: 100%;
-      max-width: 1000px;
+      max-width: 800px;
       min-height: 98vh;
       margin: 1vh auto;
-      padding: ${SPACING.container};
-      background-color: ${COLORS.background};
-      box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+      padding: ${LAYOUT_SPACING.container};
+      background-color: ${COLOR_PALETTE.background};
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12); /* 加深阴影 */
+      border-radius: 16px; /* 圆角 */
       ${generateBackgroundPattern()}
     }
 
     .poster-content {
-      max-width: 800px;
       margin: 0 auto;
-      font-family: ${TYPOGRAPHY.fonts.text};
-      font-size: ${TYPOGRAPHY.sizes.text};
-      line-height: ${TYPOGRAPHY.lineHeight.text};
-      color: ${COLORS.text};
+      font-family: ${FONT_STYLES.text};
+      font-size: ${FONT_STYLES.sizes.text};
+      line-height: ${FONT_STYLES.lineHeight.text};
+      color: ${COLOR_PALETTE.text};
       text-rendering: optimizeLegibility;
       -webkit-font-smoothing: antialiased;
       font-weight: 400;
@@ -969,53 +969,53 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
     .poster-content h1,
     .poster-content h2,
     .poster-content h3 {
-      font-family: ${TYPOGRAPHY.fonts.heading};
+      font-family: ${FONT_STYLES.heading};
       font-weight: 700;
-      line-height: ${TYPOGRAPHY.lineHeight.heading};
-      color: ${COLORS.text};
+      line-height: ${FONT_STYLES.lineHeight.heading};
+      color: ${COLOR_PALETTE.text};
       letter-spacing: -0.02em;
     }
 
     .poster-content h1 {
-      font-size: ${TYPOGRAPHY.sizes.h1};
-      margin: 0 0 ${SPACING.section};
+      font-size: ${FONT_STYLES.sizes.h1};
+      margin: 0 0 ${LAYOUT_SPACING.section};
     }
 
     .poster-content h2 {
-      font-size: ${TYPOGRAPHY.sizes.h2};
-      margin: ${SPACING.section} 0 ${SPACING.paragraph};
+      font-size: ${FONT_STYLES.sizes.h2};
+      margin: ${LAYOUT_SPACING.section} 0 ${LAYOUT_SPACING.paragraph};
     }
 
     .poster-content h3 {
-      font-size: ${TYPOGRAPHY.sizes.h3};
-      margin: ${SPACING.section} 0 ${SPACING.paragraph};
+      font-size: ${FONT_STYLES.sizes.h3};
+      margin: ${LAYOUT_SPACING.section} 0 ${LAYOUT_SPACING.paragraph};
     }
 
     .poster-content p {
-      margin: 0 0 ${SPACING.paragraph};
+      margin: 0 0 ${LAYOUT_SPACING.paragraph};
     }
 
     .poster-content a {
-      color: ${COLORS.accent};
+      color: ${COLOR_PALETTE.accent};
       text-decoration: none;
-      border-bottom: 2px solid rgba(30, 64, 175, 0.3);
+      border-bottom: 2px solid rgba(37, 99, 235, 0.3); /* 调整颜色 */
     }
 
     .poster-content strong {
       font-weight: 600;
-      color: ${COLORS.text};
+      color: ${COLOR_PALETTE.text};
     }
 
     .poster-content em {
       font-style: italic;
-      color: ${COLORS.textLight};
+      color: ${COLOR_PALETTE.textLight};
     }
 
     .poster-content blockquote {
-      margin: ${SPACING.section} 0;
+      margin: ${LAYOUT_SPACING.section} 0;
       padding: 1.5em 2em;
-      border-left: 4px solid ${COLORS.accent};
-      background-color: rgba(30, 64, 175, 0.04);
+      border-left: 4px solid ${COLOR_PALETTE.accent};
+      background-color: rgba(37, 99, 235, 0.04);   /* 调整颜色 */
       font-style: italic;
     }
 
@@ -1025,7 +1025,7 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
       background-color: rgba(0,0,0,0.04);
       padding: 0.2em 0.4em;
       border-radius: 4px;
-       white-space: pre-wrap;
+      white-space: pre-wrap;
       word-wrap: break-word;
     }
 
@@ -1037,16 +1037,16 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
       overflow-x: auto;
       font-size: 0.92em;
       line-height: 1.6;
-       white-space: pre-wrap;
+      white-space: pre-wrap;
       word-wrap: break-word;
       max-width: 100%;
     }
-
-    .poster-content pre code {
-      background-color: transparent;
-      padding: 0;
-      color: inherit;
+      .poster-content pre code {
+        background-color: transparent;
+        padding: 0;
+        color: inherit;
     }
+
   `;
   }
 
