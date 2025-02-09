@@ -29,6 +29,8 @@ export interface Config {
 
   atReply: boolean;
   quoteReply: boolean;
+
+  isLog: boolean
 }
 
 export const Config: Schema<Config> =
@@ -55,6 +57,14 @@ export const Config: Schema<Config> =
         .description('响应时引用'),
     }).description('回复'),
 
+    Schema.object({
+      isLog: Schema
+        .boolean()
+        .default(false)
+        .description('打印响应'),
+
+    }).description('调试'),
+
   ])
 
 // smb*
@@ -79,24 +89,6 @@ interface Room {
 interface Message {
   role: string;
   content: string;
-}
-
-
-interface PosterOptions {
-  width?: string;
-  minHeight?: string;
-  fontSize?: {
-    h1?: string;
-    h2?: string;
-    h3?: string;
-    text?: string;
-  };
-  fontFamily?: string;
-  textColor?: string;
-  backgroundColor?: string;
-  backgroundPattern?: 'dots' | 'lines' | 'grid' | 'none';
-  padding?: string;
-  borderRadius?: string;
 }
 
 // l*
@@ -1092,8 +1084,11 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
       }
 
       const responseData = await response.json();
-      console.log(responseData.choices[0].message.content);
-      return responseData.choices[0].message.content;
+      const content = responseData.choices[0].message.content;
+      if (cfg.isLog) {
+        logger.info(content);
+      }
+      return content;
     } catch (error) {
       if (error instanceof Error) {
         logger.error(error.message);
