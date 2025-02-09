@@ -177,7 +177,7 @@ export async function apply(ctx: Context, cfg: Config) {
         return sendMsg(session, '请重试');
       }
 
-      content = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+      content = content.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<\/think>[\s\S]*?<\/think>/g, '').trim();
       const buffer = await md2img(content);
       await sendMsg(session, `${roomName} ${messages.length}\n${h.image(buffer, 'image/png')}`)
 
@@ -585,7 +585,8 @@ dsrc.重新回复 哮天犬`);
         return sendMsg(session, '请重试');
       }
 
-      content = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
+      content = content.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<\/think>[\s\S]*?<\/think>/g, '').trim();
+
       const buffer = await md2img(content);
       await sendMsg(session, `${roomName} ${messagesWithoutLastAssistant.length}\n${h.image(buffer, 'image/png')}`)
 
