@@ -807,7 +807,7 @@ dsrc.查看某个房间的全部聊天记录 哮天犬`);
       }
       messages.splice(0, 1);
 
-      const chunkSize = 15;
+      const chunkSize = 10;
       const numChunks = Math.ceil(messages.length / chunkSize);
 
       for (let i = 0; i < numChunks; i++) {
@@ -858,7 +858,7 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
       }
       messages.splice(0, 1);
 
-      const chunkSize = 30;
+      const chunkSize = 25;
       const numChunks = Math.ceil(messages.length / chunkSize);
 
       for (let i = 0; i < numChunks; i++) {
@@ -928,8 +928,8 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
     } as const;
 
     const LAYOUT_SPACING = {
-      paragraph: '2.5em',
-      section: '4em',
+      paragraph: '2.5rem',
+      section: '3rem',
       container: '5rem',
     } as const;
 
@@ -950,8 +950,8 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
       margin: 1vh auto;
       padding: ${LAYOUT_SPACING.container};
       background-color: ${COLOR_PALETTE.background};
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12); /* 加深阴影 */
-      border-radius: 16px; /* 圆角 */
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+      border-radius: 16px;
       ${generateBackgroundPattern()}
     }
 
@@ -998,7 +998,7 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
     .poster-content a {
       color: ${COLOR_PALETTE.accent};
       text-decoration: none;
-      border-bottom: 2px solid rgba(37, 99, 235, 0.3); /* 调整颜色 */
+      border-bottom: 2px solid rgba(37, 99, 235, 0.3);
     }
 
     .poster-content strong {
@@ -1015,7 +1015,7 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
       margin: ${LAYOUT_SPACING.section} 0;
       padding: 1.5em 2em;
       border-left: 4px solid ${COLOR_PALETTE.accent};
-      background-color: rgba(37, 99, 235, 0.04);   /* 调整颜色 */
+      background-color: rgba(37, 99, 235, 0.04);
       font-style: italic;
     }
 
@@ -1051,7 +1051,7 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
   }
 
   async function markdownToPoster(markdown: string): Promise<string> {
-    const htmlContent = await marked(markdown);
+    const htmlContent = await marked.parse(markdown);
 
     return `
     <!DOCTYPE html>
