@@ -18,7 +18,7 @@ export const usage = `## 使用
 
 // pz*
 export interface Config {
-  baseUrl: string;
+  baseURL: string;
   apiKey: string;
   model: string; // [deepseek-chat, deepseek-reasoner]
   frequency_penalty: number; // >= -2 and <= 2
@@ -36,7 +36,7 @@ export interface Config {
 export const Config: Schema<Config> =
   Schema.intersect([
     Schema.object({
-      baseUrl: Schema.string().default('https://api.deepseek.com/v1'),
+      baseURL: Schema.string().default('https://api.deepseek.com/v1'),
       apiKey: Schema.string(),
       model: Schema.string(),
       frequency_penalty: Schema.number().min(-2).max(2).default(0),
@@ -1124,7 +1124,7 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
     };
 
     try {
-      const response = await fetch(`${removeTrailingSlash(cfg.baseUrl)}/chat/completions`, config);
+      const response = await fetch(`${removeTrailingSlash(cfg.baseURL)}/chat/completions`, config);
 
       if (!response.ok) {
         throw new Error(`API error: ${response.status} - ${response.statusText}`);
