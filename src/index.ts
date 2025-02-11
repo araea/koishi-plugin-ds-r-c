@@ -120,55 +120,56 @@ export async function apply(ctx: Context, cfg: Config) {
     if (!text) {
       return await next();
     }
-    if (roomNames.includes(roomName)) {
-      const rooms = await ctx.database.get('ds_r_c_room', {name: roomName});
-      const room = rooms[0];
-      if (room.isWaiting) {
-        return await next();
-      }
-      if (!room.isOpen && room.master !== session.userId) {
-        return await next();
-      }
-      const messages = room.messages;
-      if (messages.length === 0) {
-        return await next();
-      }
+    if (!roomNames.includes(roomName)) {
+      return await next();
+    }
+    const rooms = await ctx.database.get('ds_r_c_room', {name: roomName});
+    const room = rooms[0];
+    if (room.isWaiting) {
+      return await next();
+    }
+    if (!room.isOpen && room.master !== session.userId) {
+      return await next();
+    }
+    const messages = room.messages;
+    if (messages.length === 0) {
+      return await next();
+    }
 
-      messages.push({role: 'user', content: text})
+    messages.push({role: 'user', content: text})
 
-      await ctx.database.set('ds_r_c_room', {
-        name: roomName,
-      }, {
-        isWaiting: true,
-        messages,
-      })
+    await ctx.database.set('ds_r_c_room', {
+      name: roomName,
+    }, {
+      isWaiting: true,
+      messages,
+    })
 
-      let content = await chatCompletions(messages);
+    let reply = await chatCompletions(messages);
 
-      if (!content) {
-        const msgId = await sendMsg(session, '请重试', true);
-        await ctx.database.set('ds_r_c_room', {
-          name: roomName,
-        }, {
-          isWaiting: false,
-          msgId,
-        });
-        return
-      }
-
-      content = removeContentBeforeLastThinkTag(content);
-
-      const buffer = await md2img(content);
-      const msgId = await sendMsg(session, `${roomName} ${messages.length}\n${h.image(buffer, 'image/png')}`, true)
-
+    if (!reply) {
+      const msgId = await sendMsg(session, '请重试', true);
       await ctx.database.set('ds_r_c_room', {
         name: roomName,
       }, {
         isWaiting: false,
-        messages: [...messages, {role: 'assistant', content: content}],
         msgId,
       });
+      return
     }
+
+    reply = removeContentBeforeLastThinkTag(reply);
+
+    const buffer = await md2img(reply);
+    const msgId = await sendMsg(session, `${roomName} ${messages.length}\n${h.image(buffer, 'image/png')}`, true)
+
+    await ctx.database.set('ds_r_c_room', {
+      name: roomName,
+    }, {
+      isWaiting: false,
+      messages: [...messages, {role: 'assistant', content: reply}],
+      msgId,
+    });
   });
 
   // zl*
