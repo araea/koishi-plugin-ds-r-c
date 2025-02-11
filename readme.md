@@ -27,8 +27,8 @@ Koishi 的 DeepSeek AI 聊天插件。
 #### License
 
 <sup>
-Licensed under either of <a href="../ds-r-c/LICENSE-APACHE">Apache License, Version
-2.0</a> or <a href="../ds-r-c/LICENSE-MIT">MIT license</a> at your option.
+Licensed under either of <a href="../omg-mj-d/LICENSE-APACHE">Apache License, Version
+2.0</a> or <a href="../omg-mj-d/LICENSE-MIT">MIT license</a> at your option.
 </sup>
 
 <br>

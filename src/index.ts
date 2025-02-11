@@ -110,6 +110,7 @@ export async function apply(ctx: Context, cfg: Config) {
   // cl*
   const logger = ctx.logger('ds-r-c')
   const rooms = await ctx.database.get('ds_r_c_room', {});
+  // bl*
   let roomNames = rooms.map(room => room.name);
 
   // zjj*
@@ -1144,9 +1145,7 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
   }
 
   function removeTrailingSlash(baseURL: string): string {
-    if (typeof baseURL !== 'string') {
-      return baseURL;
-    }
+    baseURL = baseURL.trim()
 
     if (baseURL.endsWith('/')) {
       return baseURL.slice(0, -1);
