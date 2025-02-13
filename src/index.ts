@@ -124,9 +124,6 @@ export async function apply(ctx: Context, cfg: Config) {
   ctx.middleware(async (session, next) => {
     const content = `${h.select(session.elements, 'text')}`;
     let {name: roomName, content: text} = extractNameAndContent(content);
-    if (!text) {
-      return await next();
-    }
     let rooms = [];
     if (!roomNames.includes(roomName)) {
       if (session.quote && hasTrailingDoubleSpaces(content)) {
@@ -140,6 +137,9 @@ export async function apply(ctx: Context, cfg: Config) {
       } else {
         return await next();
       }
+    }
+    if (!text) {
+      return await next();
     }
     if (rooms.length === 0) {
       rooms = await ctx.database.get('ds_r_c_room', {name: roomName});
