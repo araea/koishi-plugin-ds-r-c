@@ -129,9 +129,8 @@ export async function apply(ctx: Context, cfg: Config) {
     }
     let rooms = [];
     if (!roomNames.includes(roomName)) {
-      if (session.quote && hasTrailingSpaces(content)) {
-        const quote = session.quote;
-        const msgId = quote.id;
+      if (session.quote && hasTrailingDoubleSpaces(content)) {
+        const msgId = session.quote.id;
         rooms = await ctx.database.get('ds_r_c_room', {msgId});
         if (rooms.length === 0) {
           return await next();
@@ -918,8 +917,12 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
     });
 
   // hs*
-  function hasTrailingSpaces(text: string): boolean {
-    return /\s{2,}$/.test(text);
+  function hasTrailingDoubleSpaces(text: string): boolean {
+    if (text.length < 2) {
+      return false;
+    }
+
+    return text.endsWith("  ");
   }
 
   function removeContentBeforeLastThinkTag(content: string): string {
