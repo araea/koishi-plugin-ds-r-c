@@ -365,11 +365,20 @@ dsrc.公开房间 哮天犬`);
     .command('dsrc.房间列表')
     .action(async ({session}) => {
       const rooms = await ctx.database.get('ds_r_c_room', {});
+
       if (rooms.length === 0) {
         return await sendMsg(session, '没有房间');
       }
-      const msg = rooms.map(room => `${room.name}${room.isOpen ? '' : '(私有)'} ${room.description}`).join('\n');
-      return await sendMsg(session, msg);
+
+      const title = '# 房间列表\n\n| 房间名 | 描述 |\n| --- | --- |';
+      const tableRows = rooms.map(room =>
+        `| ${room.name}${room.isOpen ? '' : '(私有)'} | ${room.description ? room.description : '无'} |`
+      ).join('\n');
+
+      const msg = `${title}\n${tableRows}`;
+
+      const buffer = await md2img(msg);
+      await sendMsg(session, h.image(buffer, 'image/png'));
     });
 
   // ckfjys*
@@ -927,12 +936,16 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
       background: '#f9f9f9',
       surface: '#ffffff',
       accent: '#2563eb',
+      border: '#e2e8f0',
+      tableHover: '#f7fafc',
+      tableHeader: '#edf2f7',
     } as const;
 
     const LAYOUT_SPACING = {
       paragraph: '2.5rem',
       section: '3rem',
       container: '5rem',
+      tablePadding: '1rem',
     } as const;
 
     return `
@@ -1049,6 +1062,61 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
         color: inherit;
     }
 
+ .poster-content table {
+      width: 100%;
+      margin: ${LAYOUT_SPACING.section} 0;
+      border-collapse: separate;
+      border-spacing: 0;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      background-color: ${COLOR_PALETTE.surface};
+    }
+
+    .poster-content th {
+      background-color: ${COLOR_PALETTE.tableHeader};
+      color: ${COLOR_PALETTE.text};
+      font-weight: 600;
+      text-align: left;
+      padding: ${LAYOUT_SPACING.tablePadding};
+      border-bottom: 2px solid ${COLOR_PALETTE.border};
+      position: relative;
+      transition: background-color 0.2s ease;
+    }
+
+    .poster-content td {
+      padding: ${LAYOUT_SPACING.tablePadding};
+      border-bottom: 1px solid ${COLOR_PALETTE.border};
+      color: ${COLOR_PALETTE.text};
+      transition: background-color 0.2s ease;
+    }
+
+    .poster-content tr:last-child td {
+      border-bottom: none;
+    }
+
+    .poster-content tbody tr:hover {
+      background-color: ${COLOR_PALETTE.tableHover};
+    }
+
+    .poster-content th:not(:last-child),
+    .poster-content td:not(:last-child) {
+      border-right: 1px solid ${COLOR_PALETTE.border};
+    }
+
+    /* Responsive table support */
+    @media (max-width: 768px) {
+      .poster-content table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .poster-content td,
+      .poster-content th {
+        white-space: nowrap;
+      }
+    }
   `;
   }
 
