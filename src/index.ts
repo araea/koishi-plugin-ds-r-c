@@ -12,6 +12,12 @@ export const usage = `## 使用
 3. 发送 \`dsrc 创建房间\`。
 4. 发送 \`房间名 文本\` 聊天。
 
+## 特性
+
+* 引用回复 \`房间\` 最后一条响应，可：
+  * 触发 \`删除某个房间的全部聊天记录\`, \`重新回复\` 操作该 \`房间\`。
+  * 消息结尾增加两个及以上空格，可直接继续聊天。
+
 ## QQ 群
 
 * 956758505`
@@ -115,15 +121,29 @@ export async function apply(ctx: Context, cfg: Config) {
 
   // zjj*
   ctx.middleware(async (session, next) => {
-    const content = `${h.select(session.event.message.elements, 'text')}`;
-    const {name: roomName, content: text} = extractNameAndContent(content);
+    const content = `${h.select(session.elements, 'text')}`;
+    let {name: roomName, content: text} = extractNameAndContent(content);
     if (!text) {
       return await next();
     }
+    let rooms = [];
     if (!roomNames.includes(roomName)) {
-      return await next();
+      if (session.quote && hasTrailingSpaces(content)) {
+        const quote = session.quote;
+        const msgId = quote.id;
+        rooms = await ctx.database.get('ds_r_c_room', {msgId});
+        if (rooms.length === 0) {
+          return await next();
+        }
+        roomName = rooms[0].name;
+        text = content.trim();
+      } else {
+        return await next();
+      }
     }
-    const rooms = await ctx.database.get('ds_r_c_room', {name: roomName});
+    if (rooms.length === 0) {
+      rooms = await ctx.database.get('ds_r_c_room', {name: roomName});
+    }
     const room = rooms[0];
     if (room.isWaiting) {
       return await next();
@@ -897,6 +917,10 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
     });
 
   // hs*
+  function hasTrailingSpaces(text: string): boolean {
+    return /\s{2,}$/.test(text);
+  }
+
   function removeContentBeforeLastThinkTag(content: string): string {
     const lastThinkTagIndex = content.lastIndexOf("</think>");
 
@@ -1149,7 +1173,7 @@ dsrc.查看某个房间的聊天记录概况 哮天犬`);
     const name = parts[0];
     const content = parts.length > 1 ? parts.slice(1).join(" ") : "";
 
-    return {name, content};
+    return {name, content: content.trim()};
   }
 
   function truncateContent(content: string): string {
