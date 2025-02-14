@@ -383,15 +383,35 @@ dsrc.公开房间 哮天犬`);
   // fjlb*
   ctx
     .command('dsrc.房间列表')
-    .action(async ({session}) => {
+    .action(async ({ session }) => {
       const rooms = await ctx.database.get('ds_r_c_room', {});
 
       if (rooms.length === 0) {
         return await sendMsg(session, '没有房间');
       }
 
+      const sortRoomsByName = (rooms) => {
+        const collator = new Intl.Collator('zh-CN', {
+          sensitivity: 'base',
+          numeric: true,
+        });
+
+        return rooms.sort((a, b) => {
+          if (a.isOpen && !b.isOpen) {
+            return -1;
+          }
+          if (!a.isOpen && b.isOpen) {
+            return 1;
+          }
+
+          return collator.compare(a.name, b.name);
+        });
+      };
+
+      const sortedRooms = sortRoomsByName(rooms);
+
       const title = '# 房间列表\n\n| 房间名 | 描述 |\n| --- | --- |';
-      const tableRows = rooms.map(room =>
+      const tableRows = sortedRooms.map(room =>
         `| ${room.name}${room.isOpen ? '' : '(私有)'} | ${room.description ? room.description : '无'} |`
       ).join('\n');
 
