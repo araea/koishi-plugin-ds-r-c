@@ -744,15 +744,12 @@ dsrc.删除多条聊天记录 哮天犬 2,3,5`);
         return await sendMsg(session, '只有房主可以操作');
       }
       const messages = room.messages;
-      //解析索引
       const indexList = indexes.split(/[\s,，、]+/).map(Number).filter(index => index >= 1 && index < messages.length);
 
       if (indexList.length === 0) {
         return await sendMsg(session, '索引超出范围');
       }
-      // 倒序排列索引
       indexList.sort((a, b) => b - a);
-      // 删除索引
       for (const index of indexList) {
         messages.splice(index, 1);
       }
@@ -763,7 +760,7 @@ dsrc.删除多条聊天记录 哮天犬 2,3,5`);
         messages,
       });
 
-      return await sendMsg(session, `成功删除 ${roomName} 的 ${indexList.join('、')} 条聊天记录`);
+      return await sendMsg(session, `成功删除 ${roomName} 的第 ${indexList.join('、')} 条聊天记录`);
     });
 
   // xgmtlrjl*
