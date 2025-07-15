@@ -1,15 +1,15 @@
 # koishi-plugin-ds-r-c
 
-[<img alt="github" src="https://img.shields.io/badge/github-araea/ds_r_c-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/araea/koishi-plugin-ds-r-c)
-[<img alt="npm" src="https://img.shields.io/npm/v/koishi-plugin-ds-r-c.svg?style=for-the-badge&color=fc8d62&logo=npm" height="20">](https://www.npmjs.com/package/koishi-plugin-ds-r-c)
+[![github](https://img.shields.io/badge/github-araea/ds_r_c-8da0cb?style=for-the-badge&labelColor=555555&logo=github)](https://github.com/araea/koishi-plugin-ds-r-c)
+[![npm](https://img.shields.io/npm/v/koishi-plugin-ds-r-c.svg?style=for-the-badge&color=fc8d62&logo=npm)](https://www.npmjs.com/package/koishi-plugin-ds-r-c)
 
 Koishi 的 DeepSeek AI 聊天插件。
 
 ## 使用
 
 1. 启动 `pptr` 和 `数据库` 服务。
-2. 设置指令别名（若没看到指令，请重启 commands 插件）。
-3. 填写配置（若是第三方 API，baseURL 最后别忘了加上 /v1）。
+2. 设置指令别名 (没看到指令，重启 commands 插件)。
+3. 填写配置 (第三方 API，baseURL 最后加上 /v1)。
 4. 发送 `dsrc 创建房间`。
 5. 发送 `房间名 文本` 聊天。
 
@@ -26,22 +26,14 @@ Koishi 的 DeepSeek AI 聊天插件。
 
 ## QQ 群
 
-* 956758505
+956758505
 
-<br>
+---
 
-#### License
+### License
 
-<sup>
-Licensed under either of <a href="LICENSE-APACHE">Apache License, Version
-2.0</a> or <a href="LICENSE-MIT">MIT license</a> at your option.
-</sup>
+_Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your option._
 
-<br>
-
-<sub>
-Unless you explicitly state otherwise, any contribution intentionally submitted
+_Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in this crate by you, as defined in the Apache-2.0 license, shall
-be dual licensed as above, without any additional terms or conditions.
-</sub>
-
+be dual licensed as above, without any additional terms or conditions._
