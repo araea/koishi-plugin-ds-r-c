@@ -8,8 +8,8 @@ export const inject = ["database", "puppeteer"];
 export const usage = `## 使用
 
 1. 启动 \`pptr\` 和 \`数据库\` 服务。
-2. 设置指令别名（若没看到指令，请重启 commands 插件）。
-3. 填写配置（若是第三方 API，baseURL 最后别忘了加上 /v1）。
+2. 设置指令别名 (没看到指令，重启 commands 插件)。
+3. 填写配置 (第三方 API，baseURL 最后加上 /v1)。
 4. 发送 \`dsrc 创建房间\`。
 5. 发送 \`房间名 文本\` 聊天。
 
@@ -18,6 +18,7 @@ export const usage = `## 使用
 * 引用回复 \`房间\` 最后一条响应，可：
   * 触发 \`删除某个房间的全部聊天记录\`, \`重新回复\` 操作该 \`房间\`。
   * 消息结尾增加两个及以上空格，可直接继续聊天。
+  * 如果消息以五个空格结尾，则不会将消息转换为图片。
 
 ## QQ 群
 
@@ -115,7 +116,11 @@ export async function apply(ctx: Context, cfg: Config) {
   // zjj*
   ctx.middleware(async (session, next) => {
     const content = `${h.select(session.elements, "text")}`;
+
+    const forceTextOutput = content.endsWith("     ");
+
     let { name: roomName, content: text } = extractNameAndContent(content);
+
     let rooms = [];
     if (!roomNames.includes(roomName)) {
       if (session.quote && hasTrailingDoubleSpaces(content)) {
@@ -180,12 +185,22 @@ export async function apply(ctx: Context, cfg: Config) {
 
     reply = removeContentBeforeLastThinkTag(reply);
 
-    const buffer = await md2img(reply);
-    const msgId = await sendMsg(
-      session,
-      `${roomName} ${messages.length}\n${h.image(buffer, "image/png")}`,
-      true
-    );
+    let msgId;
+
+    if (forceTextOutput) {
+      msgId = await sendMsg(
+        session,
+        `${roomName} ${messages.length}\n${reply}`,
+        true
+      );
+    } else {
+      const buffer = await md2img(reply);
+      msgId = await sendMsg(
+        session,
+        `${roomName} ${messages.length}\n${h.image(buffer, "image/png")}`,
+        true
+      );
+    }
 
     await ctx.database.set(
       "ds_r_c_room",
