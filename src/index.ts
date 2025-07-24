@@ -88,7 +88,7 @@ export const Config: Schema<Config> = Schema.intersect([
       .default(true)
       .description("响应时是否引用用户消息。"),
     removeThinkBlock: Schema.boolean()
-      .default(false)
+      .default(true)
       .description("是否在生成的回复中删除 `<think>` 思考过程块。"),
   }).description("回复设置"),
 
@@ -410,6 +410,14 @@ export function apply(ctx: Context, cfg: Config) {
         true
       );
     }
+
+    if (!cfg.removeThinkBlock) {
+      const thinkTagIndex = reply.lastIndexOf("</think>");
+      if (thinkTagIndex !== -1) {
+        reply = reply.substring(thinkTagIndex + "</think>".length).trim();
+      }
+    }
+
     await ctx.database.set(
       "ds_r_c_room",
       { id: room.id },
@@ -703,6 +711,14 @@ export function apply(ctx: Context, cfg: Config) {
         ),
         true
       );
+
+      if (!cfg.removeThinkBlock) {
+        const thinkTagIndex = reply.lastIndexOf("</think>");
+        if (thinkTagIndex !== -1) {
+          reply = reply.substring(thinkTagIndex + "</think>".length).trim();
+        }
+      }
+
       await ctx.database.set(
         "ds_r_c_room",
         { id: room.id },
