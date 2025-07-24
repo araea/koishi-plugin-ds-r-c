@@ -12,13 +12,12 @@ export const usage = `## 使用
 1. 启动 \`pptr\` 和 \`数据库\` 服务。
 2. 设置指令别名 (没看到指令，重启 commands 插件)。
 3. 填写配置 (第三方 API，baseURL 最后加上 /v1)。
-4. 发送 \`dsrc 创建房间\`。
+4. 发送 \`dsrc 创建\`。
 5. 发送 \`房间名 文本\` 聊天。
 
 ## 特性
 
-* 引用回复 \`房间\` 最后一条响应，可：
-  * 触发 \`删除某个房间的全部聊天记录\`, \`重新回复\` 操作该 \`房间\`。
+* 引用回复 \`房间\` 最后一条响应：
   * 消息结尾增加两个及以上空格，可直接继续聊天。
   * 如果消息以四个或以上空格结尾，则不会将消息转换为图片。
 
@@ -370,26 +369,44 @@ export function apply(ctx: Context, cfg: Config) {
 
   // --- Middleware & Commands ---
 
-  ctx.middleware(async (session, next) => {
+    ctx.middleware(async (session, next) => {
     const content = session.content;
 
+    // forceTextOutput: 消息以四个或更多空格结尾，则强制使用纯文本回复。
+    const forceTextOutput = content.endsWith("    ");
+    // isContinueChat: 消息以两个或更多空格结尾，这是通过引用进行聊天的触发条件。
+    const isContinueChat = content.endsWith("  ");
+
+    let roomName: string;
+    let text: string;
+
+    // 优先匹配 "房间名 消息内容" 的标准格式
     const match = content.match(/^(\S+)\s+([\s\S]+)/);
-    let roomName: string, text: string;
+
     if (match) {
-      [, roomName, text] = match;
-      text = text.trim();
-    } else if (session.quote && content.endsWith("  ")) {
+      // 模式 1: 标准聊天格式 "房间名 消息内容"
+      roomName = match[1];
+      // 从匹配结果中提取消息，并去除两端的所有空格
+      text = match[2].trim();
+    } else if (session.quote && isContinueChat) {
+      // 模式 2: 通过引用回复机器人，并且消息结尾有两个及以上空格
+      // 从引用的消息中获取房间名
       roomName = await getRoomNameFromQuote(session);
+      // 整个消息内容就是用户要发送的文本，去除两端的所有空格
       text = content.trim();
     } else {
+      // 如果不符合任何聊天格式，则交由下一个中间件处理
       return next();
     }
+
     if (!text || !roomName) return next();
+
     const room = await findRoomByName(roomName);
+    // 如果房间不存在、无权限或正在等待回复，则不处理
     if (!room || !checkRoomPermission(room, session) || room.isWaiting) {
       return next();
     }
-    const forceTextOutput = content.endsWith("    ");
+    
     const newMessages: Message[] = [
       ...room.messages,
       { role: "user", content: text },
@@ -414,6 +431,8 @@ export function apply(ctx: Context, cfg: Config) {
 
     let msgId: string;
     const replyHeader = `${room.name} (${newMessages.length})`;
+
+    // 此处的判断现在直接使用我们预先计算好的 forceTextOutput 标志
     if (forceTextOutput) {
       msgId = await sendReply(session, `${replyHeader}\n\n${reply}`, true);
     } else {
@@ -442,6 +461,7 @@ export function apply(ctx: Context, cfg: Config) {
       }
     );
   });
+
 
   const dsrc = ctx.command("dsrc", "DeepSeek 聊天室插件");
 
