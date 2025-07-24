@@ -789,7 +789,7 @@ export function apply(ctx: Context, cfg: Config) {
           { id: room.id },
           { isWaiting: false }
         );
-        return apiResult.message;
+        return (apiResult as { success: false; message: string }).message;
       }
       let reply = apiResult.content;
 
