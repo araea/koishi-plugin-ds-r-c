@@ -316,30 +316,17 @@ export function apply(ctx: Context, cfg: Config) {
     return rooms[0]?.name || null;
   }
 
-  async function sendReply(
-    session: Session,
-    content: h.Fragment,
-    returnId: true
-  ): Promise<string>;
-  async function sendReply(
-    session: Session,
-    content: h.Fragment,
-    returnId?: false
-  ): Promise<void>;
-  async function sendReply(
-    session: Session,
-    content: h.Fragment,
-    returnId: boolean = false
-  ): Promise<string | void> {
-    let elements = h.normalize(content);
+  async function sendReply(session: Session, msg: any, isReturnMsgId = false) {
     if (cfg.atReply) {
-      elements = [h.at(session.userId), ...elements];
+      msg = `${h.at(session.userId)}${h("p", "")}${msg}`;
     }
+
     if (cfg.quoteReply) {
-      elements = [h.quote(session.messageId), ...elements];
+      msg = `${h.quote(session.messageId)}${msg}`;
     }
-    const [msgId] = await session.send(elements);
-    if (returnId) {
+
+    const [msgId] = await session.send(msg);
+    if (isReturnMsgId) {
       return msgId;
     }
   }
@@ -385,18 +372,6 @@ export function apply(ctx: Context, cfg: Config) {
 
   ctx.middleware(async (session, next) => {
     const content = session.content;
-
-    if (session.quote) {
-      const roomName = await getRoomNameFromQuote(session);
-      if (roomName) {
-        if (["清空", "清空记录"].includes(content)) {
-          return session.execute(`dsrc.清空 ${roomName}`);
-        }
-        if (["重新回复", "重说"].includes(content)) {
-          return session.execute(`dsrc.重新回复 ${roomName}`);
-        }
-      }
-    }
 
     const match = content.match(/^(\S+)\s+([\s\S]+)/);
     let roomName: string, text: string;
@@ -445,7 +420,7 @@ export function apply(ctx: Context, cfg: Config) {
       const buffer = await md2img(reply);
       msgId = await sendReply(
         session,
-        h("p", `${replyHeader}\n`, h.image(buffer, "image/png")),
+        `${replyHeader}\n${h.image(buffer, "image/png")}`,
         true
       );
     }
@@ -556,7 +531,7 @@ export function apply(ctx: Context, cfg: Config) {
     });
 
   handleRoomCommand(
-    dsrc.subcommand(".删除 [name:string]", "删除一个聊天房间"),
+    dsrc.subcommand(".删除 [name:string]", "删除一个聊天房间", {captureQuote: false}),
     async (session, room, options) => {
       // 回调函数签名统一增加 options
       if (room.master !== session.userId) return "只有房主才能删除房间。";
@@ -566,7 +541,7 @@ export function apply(ctx: Context, cfg: Config) {
   );
 
   handleRoomCommand(
-    dsrc.subcommand(".设为私有 [name:string]", "将房间设为仅房主可用"),
+    dsrc.subcommand(".设为私有 [name:string]", "将房间设为仅房主可用", {captureQuote: false}),
     async (session, room, options) => {
       if (room.master !== session.userId) return "只有房主才能将房间设为私有。";
       if (!room.isOpen) return `房间「${room.name}」已经是私有状态。`;
@@ -576,7 +551,7 @@ export function apply(ctx: Context, cfg: Config) {
   );
 
   handleRoomCommand(
-    dsrc.subcommand(".设为公开 [name:string]", "将房间设为所有人可用"),
+    dsrc.subcommand(".设为公开 [name:string]", "将房间设为所有人可用", {captureQuote: false}),
     async (session, room, options) => {
       if (room.master !== session.userId) return "只有房主才能将房间设为公开。";
       if (room.isOpen) return `房间「${room.name}」已经是公开状态。`;
@@ -612,7 +587,7 @@ export function apply(ctx: Context, cfg: Config) {
 
   handleRoomCommand(
     dsrc
-      .subcommand(".预设 [name:string]", "查看房间的系统预设")
+      .subcommand(".预设 [name:string]", "查看房间的系统预设", {captureQuote: false})
       .option("text", "-t  获取纯文本格式的预设内容")
       .example("dsrc.预设 翻译官 -t"),
     async (session, room, options) => {
@@ -631,7 +606,7 @@ export function apply(ctx: Context, cfg: Config) {
   handleRoomCommand(
     dsrc.subcommand(
       ".修改预设 [name:string] <preset:text>",
-      "修改房间的系统预设"
+      "修改房间的系统预设", {captureQuote: false}
     ),
     async (session, room, options, preset) => {
       if (!preset) return session.execute("dsrc.修改预设 -h");
@@ -651,7 +626,7 @@ export function apply(ctx: Context, cfg: Config) {
   handleRoomCommand(
     dsrc.subcommand(
       ".修改描述 [name:string] <desc:text>",
-      "修改房间的描述信息"
+      "修改房间的描述信息", {captureQuote: false}
     ),
     async (session, room, options, desc) => {
       if (!desc) return session.execute("dsrc.修改描述 -h");
@@ -669,7 +644,7 @@ export function apply(ctx: Context, cfg: Config) {
   // --- Conversation history commands ---
 
   handleRoomCommand(
-    dsrc.subcommand(".清空 <name:string>", "清空指定房间的聊天记录"),
+    dsrc.subcommand(".清空 <name:string>", "清空指定房间的聊天记录", {captureQuote: false}),
     async (session, room) => {
       await ctx.database.set(
         "ds_r_c_room",
@@ -707,7 +682,7 @@ export function apply(ctx: Context, cfg: Config) {
     });
 
   handleRoomCommand(
-    dsrc.subcommand(".重新回复 [name:string]", "让机器人重新生成最后一条回复"),
+    dsrc.subcommand(".重新回复 [name:string]", "让机器人重新生成最后一条回复", {captureQuote: false}),
     async (session, room, options) => {
       if (room.messages.length <= 1) return "没有可重新生成的回复。";
       const messagesToResend = room.messages.slice(0, -1);
@@ -734,11 +709,10 @@ export function apply(ctx: Context, cfg: Config) {
       const buffer = await md2img(reply);
       const msgId = await sendReply(
         session,
-        h(
-          "p",
-          `${room.name} (${messagesToResend.length}) (重)\n`,
-          h.image(buffer, "image/png")
-        ),
+        `${room.name} (${messagesToResend.length}) (重)\n${h.image(
+          buffer,
+          "image/png"
+        )}}`,
         true
       );
 
@@ -767,7 +741,7 @@ export function apply(ctx: Context, cfg: Config) {
   handleRoomCommand(
     dsrc.subcommand(
       ".修改记录 [name:string] <index:number> <content:text>",
-      "修改指定房间的某条聊天记录"
+      "修改指定房间的某条聊天记录", {captureQuote: false}
     ),
     async (session, room, options, index, content) => {
       if (room.master !== session.userId) return "只有房主才能修改记录。";
@@ -785,7 +759,7 @@ export function apply(ctx: Context, cfg: Config) {
   handleRoomCommand(
     dsrc.subcommand(
       ".删除记录 [name:string] <indexes:text>",
-      "删除指定房间的单条或多条聊天记录"
+      "删除指定房间的单条或多条聊天记录", {captureQuote: false}
     ),
     async (session, room, options, indexes) => {
       if (room.master !== session.userId) return "只有房主才能删除记录。";
@@ -811,7 +785,7 @@ export function apply(ctx: Context, cfg: Config) {
   );
 
   handleRoomCommand(
-    dsrc.subcommand(".历史 [name:string]", "以图片形式查看房间的聊天历史"),
+    dsrc.subcommand(".历史 [name:string]", "以图片形式查看房间的聊天历史", {captureQuote: false}),
     async (session, room, options) => {
       const messages = room.messages.slice(1);
       if (messages.length === 0) return "该房间还没有聊天记录。";
