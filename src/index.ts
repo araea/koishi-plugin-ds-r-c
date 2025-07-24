@@ -20,6 +20,7 @@ export const usage = `## 使用
 * 引用回复 \`房间\` 最后一条响应：
   * 消息结尾增加两个及以上空格，可直接继续聊天。
   * 如果消息以四个或以上空格结尾，则不会将消息转换为图片。
+* 使用 \`dsrc 停止 房间名\` 可以强制停止一个正在等待中的回复。
 
 ## QQ 群
 
@@ -41,6 +42,7 @@ export interface Config {
   removeThinkBlock: boolean;
   theme: "light" | "black-gold";
   isLog: boolean;
+  requestTimeout: number; // FIX: 新增请求超时配置
 }
 
 export const Config: Schema<Config> = Schema.intersect([
@@ -101,6 +103,10 @@ export const Config: Schema<Config> = Schema.intersect([
     isLog: Schema.boolean()
       .default(false)
       .description("是否在控制台打印完整的 API 响应内容。"),
+    // FIX: 新增请求超时配置项
+    requestTimeout: Schema.number()
+      .default(30000)
+      .description("API 请求超时时间（毫秒）。"),
   }).description("调试设置"),
 ]);
 
@@ -129,6 +135,11 @@ interface Message {
   content: string;
 }
 
+// FIX: 定义 API 响应的类型，使代码更健壮
+type ChatCompletionResult =
+  | { success: true; content: string }
+  | { success: false; message: string };
+
 export function apply(ctx: Context, cfg: Config) {
   const logger = ctx.logger(name);
 
@@ -150,7 +161,10 @@ export function apply(ctx: Context, cfg: Config) {
 
   // --- Services (服务层：API 通信、图片渲染) ---
 
-  async function chatCompletions(messages: Message[]): Promise<string | null> {
+  // REFACTOR: 优化了 API 请求函数，增加了超时和更详细的错误处理
+  async function chatCompletions(
+    messages: Message[]
+  ): Promise<ChatCompletionResult> {
     const data = JSON.stringify({
       messages,
       model: cfg.model,
@@ -172,20 +186,49 @@ export function apply(ctx: Context, cfg: Config) {
             Accept: "application/json",
             Authorization: `Bearer ${cfg.apiKey}`,
           },
+          timeout: cfg.requestTimeout, // FIX: 使用配置的超时时间
         }
       );
       const content = response.choices[0]?.message?.content;
       if (!content) {
         logger.warn("API did not return a valid message content.", response);
-        return null;
+        return {
+          success: false,
+          message: "API 未返回有效内容，请检查后台日志。",
+        };
       }
       if (cfg.isLog) {
         logger.info(JSON.stringify(response, null, 2));
       }
-      return content;
+      return { success: true, content };
     } catch (error) {
+      // FIX: 提供更具体的错误信息
       logger.error("Failed to fetch from DeepSeek API:", error);
-      return null;
+      if (error.code === "ETIMEDOUT" || error.message.includes("timeout")) {
+        return { success: false, message: "API 请求超时，请稍后再试。" };
+      }
+      if (error.response) {
+        const status = error.response.status;
+        if (status === 401) {
+          return {
+            success: false,
+            message: "API 请求失败：API 密钥无效或错误。",
+          };
+        } else if (status === 429) {
+          return {
+            success: false,
+            message: "API 请求失败：请求过于频繁，已触发限流。",
+          };
+        }
+        return {
+          success: false,
+          message: `API 请求失败，服务器返回错误状态 ${status}。`,
+        };
+      }
+      return {
+        success: false,
+        message: "API 请求失败，请检查网络连接或后台日志。",
+      };
     }
   }
 
@@ -355,12 +398,13 @@ export function apply(ctx: Context, cfg: Config) {
 
       if (!checkRoomPermission(room, session))
         return `你没有权限操作私有房间「${roomName}」。`;
-
+      
+      // FIX: 只有在非 '停止' 指令时才检查 isWaiting
       if (
         room.isWaiting &&
-        (command.name.includes("回复") || command.name.includes("记录"))
+        !command.name.endsWith("停止")
       )
-        return `房间「${roomName}」正在回复中，请稍后再试或使用 \`停止房间回复\` 指令。`;
+        return `房间「${roomName}」正在回复中，请稍后再试或使用 \`dsrc 停止 ${roomName}\` 指令。`;
 
       const result = await callback(session, room, options, ...restArgs);
       if (result) return sendReply(session, h.normalize(result));
@@ -369,7 +413,7 @@ export function apply(ctx: Context, cfg: Config) {
 
   // --- Middleware & Commands ---
 
-    ctx.middleware(async (session, next) => {
+  ctx.middleware(async (session, next) => {
     const content = session.content;
 
     // forceTextOutput: 消息以四个或更多空格结尾，则强制使用纯文本回复。
@@ -406,20 +450,33 @@ export function apply(ctx: Context, cfg: Config) {
     if (!room || !checkRoomPermission(room, session) || room.isWaiting) {
       return next();
     }
-    
+
+    // FIX: 关键修复 - 在调用 API 前锁定房间，防止并发请求
+    await ctx.database.set(
+      "ds_r_c_room",
+      { id: room.id },
+      { isWaiting: true }
+    );
+
     const newMessages: Message[] = [
       ...room.messages,
       { role: "user", content: text },
     ];
-    let reply = await chatCompletions(newMessages);
-    if (!reply) {
+
+    // REFACTOR: 适配新的 API 响应格式
+    const apiResult = await chatCompletions(newMessages);
+
+    if (!apiResult.success) {
+      // FIX: 如果 API 请求失败，必须解锁房间
       await ctx.database.set(
         "ds_r_c_room",
         { id: room.id },
         { isWaiting: false }
       );
-      return sendReply(session, "API 请求失败，请检查配置或稍后重试。");
+      return sendReply(session, (apiResult as { success: false; message: string }).message);
     }
+
+    let reply = apiResult.content;
 
     // 根据配置项决定是否删除 <think> 块
     if (cfg.removeThinkBlock) {
@@ -432,7 +489,6 @@ export function apply(ctx: Context, cfg: Config) {
     let msgId: string;
     const replyHeader = `${room.name} (${newMessages.length})`;
 
-    // 此处的判断现在直接使用我们预先计算好的 forceTextOutput 标志
     if (forceTextOutput) {
       msgId = await sendReply(session, `${replyHeader}\n\n${reply}`, true);
     } else {
@@ -444,24 +500,18 @@ export function apply(ctx: Context, cfg: Config) {
       );
     }
 
-    if (!cfg.removeThinkBlock) {
-      const thinkTagIndex = reply.lastIndexOf("</think>");
-      if (thinkTagIndex !== -1) {
-        reply = reply.substring(thinkTagIndex + "</think>".length).trim();
-      }
-    }
+    // FIX: 删除了此处多余的、逻辑错误的代码块
 
     await ctx.database.set(
       "ds_r_c_room",
       { id: room.id },
       {
-        isWaiting: false,
+        isWaiting: false, // 解锁房间
         messages: [...newMessages, { role: "assistant", content: reply }],
         msgId,
       }
     );
   });
-
 
   const dsrc = ctx.command("dsrc", "DeepSeek 聊天室插件");
 
@@ -700,26 +750,49 @@ export function apply(ctx: Context, cfg: Config) {
       }
       return `操作完成。成功清空 ${successCount} 个房间的聊天记录，跳过 ${skippedCount} 个无权限或正在等待响应的房间。`;
     });
+  
+  // NEW: 实现 usage 中提到的 `停止` 指令
+  handleRoomCommand(
+    dsrc.subcommand(".停止 [name:string]", "强制停止房间的当前回复", {captureQuote: false}),
+    async (session, room) => {
+      if (!room.isWaiting) {
+        return `房间「${room.name}」当前没有正在等待的回复。`;
+      }
+      await ctx.database.set(
+        "ds_r_c_room",
+        { id: room.id },
+        { isWaiting: false }
+      );
+      return `已强制停止房间「${room.name}」的回复。您可以重新发送消息。`;
+    }
+  );
 
   handleRoomCommand(
     dsrc.subcommand(".重新回复 [name:string]", "让机器人重新生成最后一条回复", {captureQuote: false}),
-    async (session, room, options) => {
+    async (session, room) => {
       if (room.messages.length <= 1) return "没有可重新生成的回复。";
       const messagesToResend = room.messages.slice(0, -1);
+      
+      // FIX: 先锁定房间
       await ctx.database.set(
         "ds_r_c_room",
         { id: room.id },
         { isWaiting: true, messages: messagesToResend }
       );
-      let reply = await chatCompletions(messagesToResend);
-      if (!reply) {
+
+      // REFACTOR: 适配新的 API 响应格式
+      const apiResult = await chatCompletions(messagesToResend);
+      if (!apiResult.success) {
+        // FIX: 请求失败时解锁房间
         await ctx.database.set(
           "ds_r_c_room",
           { id: room.id },
           { isWaiting: false }
         );
-        return "API 请求失败，无法重新回复。";
+        return apiResult.message;
       }
+      let reply = apiResult.content;
+
       if (cfg.removeThinkBlock) {
         const thinkTagIndex = reply.lastIndexOf("</think>");
         if (thinkTagIndex !== -1) {
@@ -732,16 +805,11 @@ export function apply(ctx: Context, cfg: Config) {
         `${room.name} (${messagesToResend.length}) (重)\n${h.image(
           buffer,
           "image/png"
-        )}}`,
+        )}`,
         true
       );
 
-      if (!cfg.removeThinkBlock) {
-        const thinkTagIndex = reply.lastIndexOf("</think>");
-        if (thinkTagIndex !== -1) {
-          reply = reply.substring(thinkTagIndex + "</think>".length).trim();
-        }
-      }
+      // FIX: 删除此处多余的代码块
 
       await ctx.database.set(
         "ds_r_c_room",
