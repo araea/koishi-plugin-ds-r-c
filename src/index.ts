@@ -205,7 +205,46 @@ export function apply(ctx: Context, cfg: Config) {
   }
 
   // --- Helpers (辅助函数) --
-  //
+
+  /**
+   * --- 新增：格式化所有角色卡字段为文本 ---
+   * 将JSON对象的所有字段转换为一个易于阅读的Markdown字符串，作为房间预设。
+   * @param data 角色数据对象
+   * @returns 格式化后的Markdown文本
+   */
+  function formatAllFieldsToText(data: object): string {
+    let textContent = "";
+    for (const [key, value] of Object.entries(data)) {
+      // 跳过空或未定义的字段
+      if (value === null || value === undefined || value === "") {
+        continue;
+      }
+
+      let formattedValue: string;
+      if (Array.isArray(value)) {
+        // 数组转换成逗号分隔的字符串
+        formattedValue = value.join(", ");
+      } else if (typeof value === "object") {
+        // 嵌套对象（虽然不常见）也转换为代码块，防止信息丢失
+        formattedValue = `\`\`\`json\n${JSON.stringify(
+          value,
+          null,
+          2
+        )}\n\`\`\``;
+      } else {
+        formattedValue = String(value);
+      }
+
+      // 再次检查，避免空数组转换后产生空内容
+      if (formattedValue.trim() === "") continue;
+
+      // 使用Markdown二级标题来分隔每个字段，清晰明了
+      textContent += `## ${key}\n${formattedValue}\n\n`;
+    }
+    // 将角色卡中的 <START> 标签替换为Markdown分隔线，提高可读性
+    return textContent.replace(/<START>/g, "---\n").trim();
+  }
+
   /**
    * --- 新增：解析角色卡 ---
    * 从图片URL中解析SillyTavern角色卡数据。
@@ -452,13 +491,19 @@ export function apply(ctx: Context, cfg: Config) {
     });
 
   dsrc
-    .subcommand(".卡片创建", "通过图片角色卡创建房间")
+    .subcommand(".卡片创建 <name:string>", "通过图片角色卡创建房间")
     .usage(
-      "发送指令并附上一张角色卡图片，即可创建新房间。\n例如：dsrc.卡片创建 [图片]"
+      "通过图片角色卡创建房间。新房间名是必需的，以避免重名。\n例如：dsrc.卡片创建 新角色 [图片]"
     )
-    .action(async ({ session }) => {
-      const imageElement = h.select(session.elements, "img")[0];
+    .action(async ({ session }, name) => {
+      // 检查用户是否提供了房间名 (Koishi 通常会自动处理，但显式检查更稳妥)
+      if (!name) return session.execute("dsrc.卡片创建 -h");
+      if (name.length > 10) return "房间名不能超过 10 个字符。";
 
+      // 使用用户指定的名称检查房间是否存在，防止重复
+      if (await findRoomByName(name)) return `房间「${name}」已存在。`;
+
+      const imageElement = h.select(session.elements, "img")[0];
       if (!imageElement) {
         return "请在发送指令时附上一张角色卡图片。";
       }
@@ -471,37 +516,23 @@ export function apply(ctx: Context, cfg: Config) {
       await session.send("正在解析角色卡，请稍候...");
 
       const characterData = await parseCharacterCard(imageUrl);
-
       if (!characterData) {
         return "图片解析失败，请确认上传的是有效的 SillyTavern 角色卡。";
       }
 
-      // 从角色卡数据中提取信息
-      const name = characterData.name?.trim();
-      const description = characterData.description;
-      const personality = characterData.personality;
-      const first_mesg = characterData.first_mesg;
-      const mes_example = characterData.mes_example;
-
-      if (!name) {
-        return "角色卡解析成功，但未找到角色名称 (name)。";
+      // 使用新的辅助函数，将所有JSON数据格式化为预设文本
+      const characterInfoText = formatAllFieldsToText(characterData);
+      if (!characterInfoText) {
+        return "角色卡解析成功，但未能提取到任何有效信息。";
       }
-      if (name.length > 10)
-        return `角色卡中的名称「${name}」超过 10 个字符，无法创建。`;
-      if (await findRoomByName(name)) return `房间「${name}」已存在。`;
 
-      // 将角色信息整合成一个Markdown格式的预设
-      let preset = `请你代入以下角色设定，并以第一人称进行对话。\n\n---\n\n`;
-      if (description) preset += `## 人物描述\n${description}\n\n`;
-      if (personality) preset += `## 性格特点\n${personality}\n\n`;
-      if (first_mesg) preset += `## 开场白\n${first_mesg}\n\n`;
-      if (mes_example)
-        preset += `## 对话示例\n${mes_example.replace(
-          /<START>/g,
-          "---\n"
-        )}\n\n`;
+      const preset = `请你代入以下角色设定，\n\n---\n\n${characterInfoText}`;
 
-      // 创建房间
+      // 仍然可以从角色卡中提取描述，用于房间列表的简介
+      const description =
+        characterData.description?.substring(0, 20) || "由角色卡创建";
+
+      // 使用用户指定的房间名和完整的预设创建新房间
       await ctx.database.create("ds_r_c_room", {
         name,
         preset,
@@ -509,14 +540,13 @@ export function apply(ctx: Context, cfg: Config) {
         isOpen: true,
         isWaiting: false,
         messages: [{ role: "system", content: preset }],
-        description: description?.substring(0, 20) || "由角色卡创建",
+        description: description,
         msgId: "",
       });
 
       // 发送创建成功的带预览图的消息
-      const presetPreview = `# ${name}\n\n**房主:** ${h.at(
-        session.userId
-      )}\n\n---\n\n${preset}`;
+      const cardCharName = characterData.name || "未知";
+      const presetPreview = `# 房间: ${name} (人设: ${cardCharName})\n\n**房主:** @${session.author.nick}\n\n---\n\n${preset}`;
       const buffer = await md2img(presetPreview);
       await session.send(
         h("p", `房间「${name}」创建成功！`, h.image(buffer, "image/png"))
