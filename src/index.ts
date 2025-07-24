@@ -42,7 +42,7 @@ export interface Config {
   removeThinkBlock: boolean;
   theme: "light" | "black-gold";
   isLog: boolean;
-  requestTimeout: number; // FIX: 新增请求超时配置
+  requestTimeout: number;
 }
 
 export const Config: Schema<Config> = Schema.intersect([
@@ -103,7 +103,6 @@ export const Config: Schema<Config> = Schema.intersect([
     isLog: Schema.boolean()
       .default(false)
       .description("是否在控制台打印完整的 API 响应内容。"),
-    // FIX: 新增请求超时配置项
     requestTimeout: Schema.number()
       .default(30000)
       .description("API 请求超时时间（毫秒）。"),
@@ -135,7 +134,7 @@ interface Message {
   content: string;
 }
 
-// FIX: 定义 API 响应的类型，使代码更健壮
+// 定义 API 响应的类型，使代码更健壮
 type ChatCompletionResult =
   | { success: true; content: string }
   | { success: false; message: string };
@@ -161,7 +160,7 @@ export function apply(ctx: Context, cfg: Config) {
 
   // --- Services (服务层：API 通信、图片渲染) ---
 
-  // REFACTOR: 优化了 API 请求函数，增加了超时和更详细的错误处理
+  // 优化了 API 请求函数，增加了超时和更详细的错误处理
   async function chatCompletions(
     messages: Message[]
   ): Promise<ChatCompletionResult> {
@@ -186,7 +185,7 @@ export function apply(ctx: Context, cfg: Config) {
             Accept: "application/json",
             Authorization: `Bearer ${cfg.apiKey}`,
           },
-          timeout: cfg.requestTimeout, // FIX: 使用配置的超时时间
+          timeout: cfg.requestTimeout, // 使用配置的超时时间
         }
       );
       const content = response.choices[0]?.message?.content;
@@ -202,7 +201,7 @@ export function apply(ctx: Context, cfg: Config) {
       }
       return { success: true, content };
     } catch (error) {
-      // FIX: 提供更具体的错误信息
+      // 提供更具体的错误信息
       logger.error("Failed to fetch from DeepSeek API:", error);
       if (error.code === "ETIMEDOUT" || error.message.includes("timeout")) {
         return { success: false, message: "API 请求超时，请稍后再试。" };
@@ -249,7 +248,7 @@ export function apply(ctx: Context, cfg: Config) {
   // --- Helpers (辅助函数) --
 
   /**
-   * --- 新增：格式化所有角色卡字段为文本 ---
+   * --- 格式化所有角色卡字段为文本 ---
    * 将JSON对象的所有字段转换为一个易于阅读的Markdown字符串，作为房间预设。
    * @param data 角色数据对象
    * @returns 格式化后的Markdown文本
@@ -288,7 +287,7 @@ export function apply(ctx: Context, cfg: Config) {
   }
 
   /**
-   * --- 新增：解析角色卡 ---
+   * --- 解析角色卡 ---
    * 从图片URL中解析SillyTavern角色卡数据。
    * @param imageUrl 图片的URL
    * @returns 解析出的角色数据对象，失败则返回null
@@ -398,12 +397,9 @@ export function apply(ctx: Context, cfg: Config) {
 
       if (!checkRoomPermission(room, session))
         return `你没有权限操作私有房间「${roomName}」。`;
-      
-      // FIX: 只有在非 '停止' 指令时才检查 isWaiting
-      if (
-        room.isWaiting &&
-        !command.name.endsWith("停止")
-      )
+
+      // 只有在非 '停止' 指令时才检查 isWaiting
+      if (room.isWaiting && !command.name.endsWith("停止"))
         return `房间「${roomName}」正在回复中，请稍后再试或使用 \`dsrc 停止 ${roomName}\` 指令。`;
 
       const result = await callback(session, room, options, ...restArgs);
@@ -451,29 +447,28 @@ export function apply(ctx: Context, cfg: Config) {
       return next();
     }
 
-    // FIX: 关键修复 - 在调用 API 前锁定房间，防止并发请求
-    await ctx.database.set(
-      "ds_r_c_room",
-      { id: room.id },
-      { isWaiting: true }
-    );
+    // 关键修复 - 在调用 API 前锁定房间，防止并发请求
+    await ctx.database.set("ds_r_c_room", { id: room.id }, { isWaiting: true });
 
     const newMessages: Message[] = [
       ...room.messages,
       { role: "user", content: text },
     ];
 
-    // REFACTOR: 适配新的 API 响应格式
+    // 适配新的 API 响应格式
     const apiResult = await chatCompletions(newMessages);
 
     if (!apiResult.success) {
-      // FIX: 如果 API 请求失败，必须解锁房间
+      // 如果 API 请求失败，必须解锁房间
       await ctx.database.set(
         "ds_r_c_room",
         { id: room.id },
         { isWaiting: false }
       );
-      return sendReply(session, (apiResult as { success: false; message: string }).message);
+      return sendReply(
+        session,
+        (apiResult as { success: false; message: string }).message
+      );
     }
 
     let reply = apiResult.content;
@@ -500,7 +495,12 @@ export function apply(ctx: Context, cfg: Config) {
       );
     }
 
-    // FIX: 删除了此处多余的、逻辑错误的代码块
+    if (!cfg.removeThinkBlock) {
+      const thinkTagIndex = reply.lastIndexOf("</think>");
+      if (thinkTagIndex !== -1) {
+        reply = reply.substring(thinkTagIndex + "</think>".length).trim();
+      }
+    }
 
     await ctx.database.set(
       "ds_r_c_room",
@@ -601,7 +601,9 @@ export function apply(ctx: Context, cfg: Config) {
     });
 
   handleRoomCommand(
-    dsrc.subcommand(".删除 [name:string]", "删除一个聊天房间", {captureQuote: false}),
+    dsrc.subcommand(".删除 [name:string]", "删除一个聊天房间", {
+      captureQuote: false,
+    }),
     async (session, room, options) => {
       // 回调函数签名统一增加 options
       if (room.master !== session.userId) return "只有房主才能删除房间。";
@@ -611,7 +613,9 @@ export function apply(ctx: Context, cfg: Config) {
   );
 
   handleRoomCommand(
-    dsrc.subcommand(".设为私有 [name:string]", "将房间设为仅房主可用", {captureQuote: false}),
+    dsrc.subcommand(".设为私有 [name:string]", "将房间设为仅房主可用", {
+      captureQuote: false,
+    }),
     async (session, room, options) => {
       if (room.master !== session.userId) return "只有房主才能将房间设为私有。";
       if (!room.isOpen) return `房间「${room.name}」已经是私有状态。`;
@@ -621,7 +625,9 @@ export function apply(ctx: Context, cfg: Config) {
   );
 
   handleRoomCommand(
-    dsrc.subcommand(".设为公开 [name:string]", "将房间设为所有人可用", {captureQuote: false}),
+    dsrc.subcommand(".设为公开 [name:string]", "将房间设为所有人可用", {
+      captureQuote: false,
+    }),
     async (session, room, options) => {
       if (room.master !== session.userId) return "只有房主才能将房间设为公开。";
       if (room.isOpen) return `房间「${room.name}」已经是公开状态。`;
@@ -657,7 +663,9 @@ export function apply(ctx: Context, cfg: Config) {
 
   handleRoomCommand(
     dsrc
-      .subcommand(".预设 [name:string]", "查看房间的系统预设", {captureQuote: false})
+      .subcommand(".预设 [name:string]", "查看房间的系统预设", {
+        captureQuote: false,
+      })
       .option("text", "-t  获取纯文本格式的预设内容")
       .example("dsrc.预设 翻译官 -t"),
     async (session, room, options) => {
@@ -676,7 +684,8 @@ export function apply(ctx: Context, cfg: Config) {
   handleRoomCommand(
     dsrc.subcommand(
       ".修改预设 [name:string] <preset:text>",
-      "修改房间的系统预设", {captureQuote: false}
+      "修改房间的系统预设",
+      { captureQuote: false }
     ),
     async (session, room, options, preset) => {
       if (!preset) return session.execute("dsrc.修改预设 -h");
@@ -696,7 +705,8 @@ export function apply(ctx: Context, cfg: Config) {
   handleRoomCommand(
     dsrc.subcommand(
       ".修改描述 [name:string] <desc:text>",
-      "修改房间的描述信息", {captureQuote: false}
+      "修改房间的描述信息",
+      { captureQuote: false }
     ),
     async (session, room, options, desc) => {
       if (!desc) return session.execute("dsrc.修改描述 -h");
@@ -714,7 +724,9 @@ export function apply(ctx: Context, cfg: Config) {
   // --- Conversation history commands ---
 
   handleRoomCommand(
-    dsrc.subcommand(".清空 <name:string>", "清空指定房间的聊天记录", {captureQuote: false}),
+    dsrc.subcommand(".清空 <name:string>", "清空指定房间的聊天记录", {
+      captureQuote: false,
+    }),
     async (session, room) => {
       await ctx.database.set(
         "ds_r_c_room",
@@ -750,10 +762,12 @@ export function apply(ctx: Context, cfg: Config) {
       }
       return `操作完成。成功清空 ${successCount} 个房间的聊天记录，跳过 ${skippedCount} 个无权限或正在等待响应的房间。`;
     });
-  
+
   // NEW: 实现 usage 中提到的 `停止` 指令
   handleRoomCommand(
-    dsrc.subcommand(".停止 [name:string]", "强制停止房间的当前回复", {captureQuote: false}),
+    dsrc.subcommand(".停止 [name:string]", "强制停止房间的当前回复", {
+      captureQuote: false,
+    }),
     async (session, room) => {
       if (!room.isWaiting) {
         return `房间「${room.name}」当前没有正在等待的回复。`;
@@ -768,22 +782,24 @@ export function apply(ctx: Context, cfg: Config) {
   );
 
   handleRoomCommand(
-    dsrc.subcommand(".重新回复 [name:string]", "让机器人重新生成最后一条回复", {captureQuote: false}),
+    dsrc.subcommand(".重新回复 [name:string]", "让机器人重新生成最后一条回复", {
+      captureQuote: false,
+    }),
     async (session, room) => {
       if (room.messages.length <= 1) return "没有可重新生成的回复。";
       const messagesToResend = room.messages.slice(0, -1);
-      
-      // FIX: 先锁定房间
+
+      // 先锁定房间
       await ctx.database.set(
         "ds_r_c_room",
         { id: room.id },
         { isWaiting: true, messages: messagesToResend }
       );
 
-      // REFACTOR: 适配新的 API 响应格式
+      // 适配新的 API 响应格式
       const apiResult = await chatCompletions(messagesToResend);
       if (!apiResult.success) {
-        // FIX: 请求失败时解锁房间
+        // 请求失败时解锁房间
         await ctx.database.set(
           "ds_r_c_room",
           { id: room.id },
@@ -809,7 +825,12 @@ export function apply(ctx: Context, cfg: Config) {
         true
       );
 
-      // FIX: 删除此处多余的代码块
+      if (!cfg.removeThinkBlock) {
+        const thinkTagIndex = reply.lastIndexOf("</think>");
+        if (thinkTagIndex !== -1) {
+          reply = reply.substring(thinkTagIndex + "</think>".length).trim();
+        }
+      }
 
       await ctx.database.set(
         "ds_r_c_room",
@@ -829,7 +850,8 @@ export function apply(ctx: Context, cfg: Config) {
   handleRoomCommand(
     dsrc.subcommand(
       ".修改记录 [name:string] <index:number> <content:text>",
-      "修改指定房间的某条聊天记录", {captureQuote: false}
+      "修改指定房间的某条聊天记录",
+      { captureQuote: false }
     ),
     async (session, room, options, index, content) => {
       if (room.master !== session.userId) return "只有房主才能修改记录。";
@@ -847,7 +869,8 @@ export function apply(ctx: Context, cfg: Config) {
   handleRoomCommand(
     dsrc.subcommand(
       ".删除记录 [name:string] <indexes:text>",
-      "删除指定房间的单条或多条聊天记录", {captureQuote: false}
+      "删除指定房间的单条或多条聊天记录",
+      { captureQuote: false }
     ),
     async (session, room, options, indexes) => {
       if (room.master !== session.userId) return "只有房主才能删除记录。";
@@ -873,7 +896,9 @@ export function apply(ctx: Context, cfg: Config) {
   );
 
   handleRoomCommand(
-    dsrc.subcommand(".历史 [name:string]", "以图片形式查看房间的聊天历史", {captureQuote: false}),
+    dsrc.subcommand(".历史 [name:string]", "以图片形式查看房间的聊天历史", {
+      captureQuote: false,
+    }),
     async (session, room, options) => {
       const messages = room.messages.slice(1);
       if (messages.length === 0) return "该房间还没有聊天记录。";
