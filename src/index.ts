@@ -1,4 +1,4 @@
-import { Context, h, Schema, Session, Tables, Command } from "koishi";
+import { Context, h, Schema, Session, Command } from "koishi";
 import {} from "koishi-plugin-puppeteer";
 import { marked } from "marked";
 import extract from "png-chunks-extract";
@@ -310,25 +310,34 @@ export function apply(ctx: Context, cfg: Config) {
     callback: (
       session: Session,
       room: Room,
+      options: any,
       ...args: any[]
     ) => Promise<string | void | h.Fragment>
   ) => {
-    command.action(async ({ session, args }) => {
+    command.action(async ({ session, args, options }) => {
       let [roomName, ...restArgs] = args;
+
+      // 核心功能：如果 roomName 未提供，且有引用消息，则尝试从中获取
       if (!roomName && session.quote) {
         roomName = await getRoomNameFromQuote(session);
       }
+
+      // 如果最终还是没有 roomName，提示用户查看帮助
       if (!roomName) return session.execute(`${command.name} -h`);
+
       const room = await findRoomByName(roomName);
       if (!room) return `房间「${roomName}」不存在。`;
+
       if (!checkRoomPermission(room, session))
         return `你没有权限操作私有房间「${roomName}」。`;
+
       if (
         room.isWaiting &&
         (command.name.includes("回复") || command.name.includes("记录"))
       )
         return `房间「${roomName}」正在回复中，请稍后再试或使用 \`停止房间回复\` 指令。`;
-      const result = await callback(session, room, ...restArgs);
+
+      const result = await callback(session, room, options, ...restArgs);
       if (result) return sendReply(session, h.normalize(result));
     });
   };
@@ -509,16 +518,18 @@ export function apply(ctx: Context, cfg: Config) {
     });
 
   handleRoomCommand(
-    dsrc.subcommand(".删除 <name:string>", "删除一个聊天房间"),
-    async (session, room) => {
+    dsrc.subcommand(".删除 [name:string]", "删除一个聊天房间"),
+    async (session, room, options) => {
+      // 回调函数签名统一增加 options
+      if (room.master !== session.userId) return "只有房主才能删除房间。";
       await ctx.database.remove("ds_r_c_room", { id: room.id });
       return `房间「${room.name}」已成功删除。`;
     }
   );
 
   handleRoomCommand(
-    dsrc.subcommand(".设为私有 <name:string>", "将房间设为仅房主可用"),
-    async (session, room) => {
+    dsrc.subcommand(".设为私有 [name:string]", "将房间设为仅房主可用"),
+    async (session, room, options) => {
       if (room.master !== session.userId) return "只有房主才能将房间设为私有。";
       if (!room.isOpen) return `房间「${room.name}」已经是私有状态。`;
       await ctx.database.set("ds_r_c_room", { id: room.id }, { isOpen: false });
@@ -527,8 +538,8 @@ export function apply(ctx: Context, cfg: Config) {
   );
 
   handleRoomCommand(
-    dsrc.subcommand(".设为公开 <name:string>", "将房间设为所有人可用"),
-    async (session, room) => {
+    dsrc.subcommand(".设为公开 [name:string]", "将房间设为所有人可用"),
+    async (session, room, options) => {
       if (room.master !== session.userId) return "只有房主才能将房间设为公开。";
       if (room.isOpen) return `房间「${room.name}」已经是公开状态。`;
       await ctx.database.set("ds_r_c_room", { id: room.id }, { isOpen: true });
@@ -562,22 +573,31 @@ export function apply(ctx: Context, cfg: Config) {
     });
 
   handleRoomCommand(
-    dsrc.subcommand(".预设 <name:string>", "查看房间的系统预设"),
-    async (session, room) => {
-      const buffer = await md2img(
-        `# ${room.name} 的预设\n\n---\n\n${room.preset}`
-      );
-      return h.image(buffer, "image/png");
+    dsrc
+      .subcommand(".预设 [name:string]", "查看房间的系统预设")
+      .option("text", "-t  获取纯文本格式的预设内容")
+      .example("dsrc.预设 翻译官 -t"),
+    async (session, room, options) => {
+      // 房间查找和权限检查已由 handleRoomCommand 完成
+      if (options.text) {
+        return `房间「${room.name}」的预设内容如下：\n\n${room.preset}`;
+      } else {
+        const buffer = await md2img(
+          `# ${room.name} 的预设\n\n---\n\n${room.preset}`
+        );
+        return h.image(buffer, "image/png");
+      }
     }
   );
 
   handleRoomCommand(
     dsrc.subcommand(
-      ".修改预设 <name:string> <preset:text>",
+      ".修改预设 [name:string] <preset:text>",
       "修改房间的系统预设"
     ),
-    async (session, room, preset) => {
+    async (session, room, options, preset) => {
       if (!preset) return session.execute("dsrc.修改预设 -h");
+      if (room.master !== session.userId) return "只有房主才能修改预设。";
       const newMessages = room.messages.map((m) =>
         m.role === "system" ? { ...m, content: preset } : m
       );
@@ -592,12 +612,13 @@ export function apply(ctx: Context, cfg: Config) {
 
   handleRoomCommand(
     dsrc.subcommand(
-      ".修改描述 <name:string> <desc:text>",
+      ".修改描述 [name:string] <desc:text>",
       "修改房间的描述信息"
     ),
-    async (session, room, desc) => {
+    async (session, room, options, desc) => {
       if (!desc) return session.execute("dsrc.修改描述 -h");
       if (desc.length > 20) return "描述不能超过 20 个字符。";
+      if (room.master !== session.userId) return "只有房主才能修改描述。";
       await ctx.database.set(
         "ds_r_c_room",
         { id: room.id },
@@ -648,8 +669,8 @@ export function apply(ctx: Context, cfg: Config) {
     });
 
   handleRoomCommand(
-    dsrc.subcommand(".重新回复 <name:string>", "让机器人重新生成最后一条回复"),
-    async (session, room) => {
+    dsrc.subcommand(".重新回复 [name:string]", "让机器人重新生成最后一条回复"),
+    async (session, room, options) => {
       if (room.messages.length <= 1) return "没有可重新生成的回复。";
       const messagesToResend = room.messages.slice(0, -1);
       await ctx.database.set(
@@ -666,7 +687,6 @@ export function apply(ctx: Context, cfg: Config) {
         );
         return "API 请求失败，无法重新回复。";
       }
-      // 根据配置项决定是否删除 <think> ...
       if (cfg.removeThinkBlock) {
         const thinkTagIndex = reply.lastIndexOf("</think>");
         if (thinkTagIndex !== -1) {
@@ -700,10 +720,11 @@ export function apply(ctx: Context, cfg: Config) {
 
   handleRoomCommand(
     dsrc.subcommand(
-      ".修改记录 <name:string> <index:number> <content:text>",
+      ".修改记录 [name:string] <index:number> <content:text>",
       "修改指定房间的某条聊天记录"
     ),
-    async (session, room, index, content) => {
+    async (session, room, options, index, content) => {
+      if (room.master !== session.userId) return "只有房主才能修改记录。";
       if (index === undefined || !content)
         return session.execute("dsrc.修改记录 -h");
       const messages = room.messages;
@@ -717,10 +738,11 @@ export function apply(ctx: Context, cfg: Config) {
 
   handleRoomCommand(
     dsrc.subcommand(
-      ".删除记录 <name:string> <indexes:text>",
+      ".删除记录 [name:string] <indexes:text>",
       "删除指定房间的单条或多条聊天记录"
     ),
-    async (session, room, indexes) => {
+    async (session, room, options, indexes) => {
+      if (room.master !== session.userId) return "只有房主才能删除记录。";
       if (!indexes) return session.execute("dsrc.删除记录 -h");
       const messages = room.messages;
       const maxIndex = messages.length - 1;
@@ -743,8 +765,8 @@ export function apply(ctx: Context, cfg: Config) {
   );
 
   handleRoomCommand(
-    dsrc.subcommand(".历史 <name:string>", "以图片形式查看房间的聊天历史"),
-    async (session, room) => {
+    dsrc.subcommand(".历史 [name:string]", "以图片形式查看房间的聊天历史"),
+    async (session, room, options) => {
       const messages = room.messages.slice(1);
       if (messages.length === 0) return "该房间还没有聊天记录。";
       const chunkSize = 15;
@@ -767,7 +789,7 @@ export function apply(ctx: Context, cfg: Config) {
           .join("\n\n---\n\n");
         try {
           const buffer = await md2img(msgContent);
-          await session.send(h.image(buffer, "image/png")); // 直接发送，不走统一回复逻辑
+          await session.send(h.image(buffer, "image/png"));
         } catch (error) {
           logger.error(`Error sending history chunk ${i + 1}:`, error);
           await sendReply(session, `发送第 ${i + 1} 组聊天记录时出错。`);
