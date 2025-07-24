@@ -1,6 +1,9 @@
 import { Context, h, Schema, Session, Tables, Command } from "koishi";
 import {} from "koishi-plugin-puppeteer";
 import { marked } from "marked";
+import extract from "png-chunks-extract";
+import PNGtext from "png-chunk-text";
+import { Buffer } from "node:buffer";
 
 export const name = "ds-r-c";
 export const inject = ["database", "puppeteer"];
@@ -36,6 +39,7 @@ export interface Config {
   top_p: number;
   atReply: boolean;
   quoteReply: boolean;
+  removeThinkBlock: boolean;
   theme: "light" | "black-gold";
   isLog: boolean;
 }
@@ -83,6 +87,9 @@ export const Config: Schema<Config> = Schema.intersect([
     quoteReply: Schema.boolean()
       .default(true)
       .description("响应时是否引用用户消息。"),
+    removeThinkBlock: Schema.boolean()
+      .default(false)
+      .description("是否在生成的回复中删除 `<think>` 思考过程块。"),
   }).description("回复设置"),
 
   Schema.object({
@@ -197,7 +204,59 @@ export function apply(ctx: Context, cfg: Config) {
     }
   }
 
-  // --- Helpers (辅助函数) ---
+  // --- Helpers (辅助函数) --
+  //
+  /**
+   * --- 新增：解析角色卡 ---
+   * 从图片URL中解析SillyTavern角色卡数据。
+   * @param imageUrl 图片的URL
+   * @returns 解析出的角色数据对象，失败则返回null
+   */
+  async function parseCharacterCard(imageUrl: string): Promise<any | null> {
+    try {
+      const imageBuffer = await ctx.http.get(imageUrl, {
+        responseType: "arraybuffer",
+      });
+      const buffer = Buffer.from(imageBuffer);
+
+      // 核心逻辑借鉴自 character-card-parser.js 的 read() 函数
+      const chunks = extract(new Uint8Array(buffer));
+      const textChunks = chunks
+        .filter((chunk) => chunk.name === "tEXt")
+        .map((chunk) => PNGtext.decode(chunk.data));
+
+      if (textChunks.length === 0) {
+        logger.warn("角色卡解析错误：在PNG元数据中未找到任何文本块。");
+        return null;
+      }
+
+      // 优先使用 V3 (ccv3)
+      const ccv3Chunk = textChunks.find(
+        (chunk) => chunk.keyword.toLowerCase() === "ccv3"
+      );
+      if (ccv3Chunk) {
+        const jsonData = Buffer.from(ccv3Chunk.text, "base64").toString("utf8");
+        return JSON.parse(jsonData);
+      }
+
+      // 降级使用 V2 (chara)
+      const charaChunk = textChunks.find(
+        (chunk) => chunk.keyword.toLowerCase() === "chara"
+      );
+      if (charaChunk) {
+        const jsonData = Buffer.from(charaChunk.text, "base64").toString(
+          "utf8"
+        );
+        return JSON.parse(jsonData);
+      }
+
+      logger.warn('角色卡解析错误：未找到 "chara" 或 "ccv3" 数据块。');
+      return null;
+    } catch (error) {
+      logger.error("解析角色卡时发生意外错误:", error);
+      return null;
+    }
+  }
 
   async function findRoomByName(name: string): Promise<Room | null> {
     if (!name) return null;
@@ -322,10 +381,14 @@ export function apply(ctx: Context, cfg: Config) {
       return sendReply(session, "API 请求失败，请检查配置或稍后重试。");
     }
 
-    const thinkTagIndex = reply.lastIndexOf("</think>");
-    if (thinkTagIndex !== -1) {
-      reply = reply.substring(thinkTagIndex + "</think>".length).trim();
+    // 根据配置项决定是否删除 <think> 块
+    if (cfg.removeThinkBlock) {
+      const thinkTagIndex = reply.lastIndexOf("</think>");
+      if (thinkTagIndex !== -1) {
+        reply = reply.substring(thinkTagIndex + "</think>".length).trim();
+      }
     }
+
     let msgId: string;
     const replyHeader = `${room.name} (${newMessages.length})`;
     if (forceTextOutput) {
@@ -369,6 +432,80 @@ export function apply(ctx: Context, cfg: Config) {
         msgId: "",
       });
       return `房间「${name}」创建成功！\n开始对话：${name} 你好`;
+    });
+
+  dsrc
+    .subcommand(".卡片创建", "通过图片角色卡创建房间")
+    .usage(
+      "发送指令并附上一张角色卡图片，即可创建新房间。\n例如：dsrc.卡片创建 [图片]"
+    )
+    .action(async ({ session }) => {
+      const imageElement = h.select(session.elements, "img")[0];
+
+      if (!imageElement) {
+        return "请在发送指令时附上一张角色卡图片。";
+      }
+
+      const imageUrl = imageElement.attrs.src;
+      if (!imageUrl) {
+        return "无法获取图片地址，请重试。";
+      }
+
+      await session.send("正在解析角色卡，请稍候...");
+
+      const characterData = await parseCharacterCard(imageUrl);
+
+      if (!characterData) {
+        return "图片解析失败，请确认上传的是有效的 SillyTavern 角色卡。";
+      }
+
+      // 从角色卡数据中提取信息
+      const name = characterData.name?.trim();
+      const description = characterData.description;
+      const personality = characterData.personality;
+      const first_mesg = characterData.first_mesg;
+      const mes_example = characterData.mes_example;
+
+      if (!name) {
+        return "角色卡解析成功，但未找到角色名称 (name)。";
+      }
+      if (name.length > 10)
+        return `角色卡中的名称「${name}」超过 10 个字符，无法创建。`;
+      if (await findRoomByName(name)) return `房间「${name}」已存在。`;
+
+      // 将角色信息整合成一个Markdown格式的预设
+      let preset = `请你代入以下角色设定，并以第一人称进行对话。\n\n---\n\n`;
+      if (description) preset += `## 人物描述\n${description}\n\n`;
+      if (personality) preset += `## 性格特点\n${personality}\n\n`;
+      if (first_mesg) preset += `## 开场白\n${first_mesg}\n\n`;
+      if (mes_example)
+        preset += `## 对话示例\n${mes_example.replace(
+          /<START>/g,
+          "---\n"
+        )}\n\n`;
+
+      // 创建房间
+      await ctx.database.create("ds_r_c_room", {
+        name,
+        preset,
+        master: session.userId,
+        isOpen: true,
+        isWaiting: false,
+        messages: [{ role: "system", content: preset }],
+        description: description?.substring(0, 20) || "由角色卡创建",
+        msgId: "",
+      });
+
+      // 发送创建成功的带预览图的消息
+      const presetPreview = `# ${name}\n\n**房主:** ${h.at(
+        session.userId
+      )}\n\n---\n\n${preset}`;
+      const buffer = await md2img(presetPreview);
+      await session.send(
+        h("p", `房间「${name}」创建成功！`, h.image(buffer, "image/png"))
+      );
+
+      return `现在可以开始对话了：\n${name} 你好`;
     });
 
   handleRoomCommand(
@@ -529,9 +666,12 @@ export function apply(ctx: Context, cfg: Config) {
         );
         return "API 请求失败，无法重新回复。";
       }
-      const thinkTagIndex = reply.lastIndexOf("</think>");
-      if (thinkTagIndex !== -1) {
-        reply = reply.substring(thinkTagIndex + "</think>".length).trim();
+      // 根据配置项决定是否删除 <think> ...
+      if (cfg.removeThinkBlock) {
+        const thinkTagIndex = reply.lastIndexOf("</think>");
+        if (thinkTagIndex !== -1) {
+          reply = reply.substring(thinkTagIndex + "</think>".length).trim();
+        }
       }
       const buffer = await md2img(reply);
       const msgId = await sendReply(

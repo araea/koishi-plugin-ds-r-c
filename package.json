@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-ds-r-c",
   "description": "Koishi 的 DeepSeek AI 聊天插件。",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -37,6 +37,12 @@
     "koishi": "^4.18.8"
   },
   "dependencies": {
-    "marked": "^15.0.12"
+    "marked": "^15.0.12",
+    "png-chunk-text": "^1.0.0",
+    "png-chunks-extract": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/png-chunk-text": "^1",
+    "@types/png-chunks-extract": "^1"
   }
 }
