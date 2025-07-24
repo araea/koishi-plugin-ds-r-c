@@ -408,46 +408,39 @@ export function apply(ctx: Context, cfg: Config) {
   };
 
   // --- Middleware & Commands ---
+  // zjj*
 
   ctx.middleware(async (session, next) => {
-    const content = session.content;
+    const content = `${h.select(session.elements, "text")}`;
 
-    // forceTextOutput: 消息以四个或更多空格结尾，则强制使用纯文本回复。
     const forceTextOutput = content.endsWith("    ");
-    // isContinueChat: 消息以两个或更多空格结尾，这是通过引用进行聊天的触发条件。
     const isContinueChat = content.endsWith("  ");
 
     let roomName: string;
     let text: string;
 
-    // 优先匹配 "房间名 消息内容" 的标准格式
-    const match = content.match(/^(\S+)\s+([\s\S]+)/);
-
-    if (match) {
-      // 模式 1: 标准聊天格式 "房间名 消息内容"
-      roomName = match[1];
-      // 从匹配结果中提取消息，并去除两端的所有空格
-      text = match[2].trim();
-    } else if (session.quote && isContinueChat) {
-      // 模式 2: 通过引用回复机器人，并且消息结尾有两个及以上空格
-      // 从引用的消息中获取房间名
-      roomName = await getRoomNameFromQuote(session);
-      // 整个消息内容就是用户要发送的文本，去除两端的所有空格
+    const getRoomName = await getRoomNameFromQuote(session);
+    if (isContinueChat && getRoomName) {
+      roomName = getRoomName;
       text = content.trim();
     } else {
-      // 如果不符合任何聊天格式，则交由下一个中间件处理
-      return next();
+      const match = content.match(/^(\S+)\s+([\s\S]+)/);
+
+      if (match) {
+        roomName = match[1];
+        text = match[2].trim();
+      }
     }
 
     if (!text || !roomName) return next();
 
     const room = await findRoomByName(roomName);
+
     // 如果房间不存在、无权限或正在等待回复，则不处理
     if (!room || !checkRoomPermission(room, session) || room.isWaiting) {
       return next();
     }
 
-    // 关键修复 - 在调用 API 前锁定房间，防止并发请求
     await ctx.database.set("ds_r_c_room", { id: room.id }, { isWaiting: true });
 
     const newMessages: Message[] = [
@@ -455,11 +448,9 @@ export function apply(ctx: Context, cfg: Config) {
       { role: "user", content: text },
     ];
 
-    // 适配新的 API 响应格式
     const apiResult = await chatCompletions(newMessages);
 
     if (!apiResult.success) {
-      // 如果 API 请求失败，必须解锁房间
       await ctx.database.set(
         "ds_r_c_room",
         { id: room.id },
