@@ -1,12 +1,13 @@
 import { Context, h, Schema, Session, Command } from "koishi";
-import {} from "koishi-plugin-puppeteer";
-import { marked } from "marked";
+import {} from "koishi-plugin-markdown-to-image-service";
 import extract from "png-chunks-extract";
 import PNGtext from "png-chunk-text";
 import { Buffer } from "node:buffer";
 
 export const name = "ds-r-c";
-export const inject = ["database", "puppeteer"];
+export const inject = {
+  required: ["database", "markdownToImage"],
+};
 export const usage = `## 使用
 
 1. 启动 \`pptr\` 和 \`数据库\` 服务。
@@ -21,6 +22,7 @@ export const usage = `## 使用
   * 消息结尾增加两个及以上空格，可直接继续聊天。
   * 如果消息以四个或以上空格结尾，则不会将消息转换为图片。
 * 使用 \`dsrc 停止 房间名\` 可以强制停止一个正在等待中的回复。
+* 图片的主题样式现在由 \`markdown-to-image-service\` 插件统一配置。
 
 ## QQ 群
 
@@ -40,7 +42,6 @@ export interface Config {
   atReply: boolean;
   quoteReply: boolean;
   removeThinkBlock: boolean;
-  theme: "light" | "black-gold";
   isLog: boolean;
   requestTimeout: number;
 }
@@ -92,12 +93,6 @@ export const Config: Schema<Config> = Schema.intersect([
       .default(true)
       .description("是否在生成的回复中删除 `<think>` 思考过程块。"),
   }).description("回复设置"),
-
-  Schema.object({
-    theme: Schema.union(["light", "black-gold"])
-      .default("black-gold")
-      .description("选择生成图片的色彩主题。为您特别准备了「黑金」主题哦~"),
-  }).description("外观设置"),
 
   Schema.object({
     isLog: Schema.boolean()
@@ -228,20 +223,6 @@ export function apply(ctx: Context, cfg: Config) {
         success: false,
         message: "API 请求失败，请检查网络连接或后台日志。",
       };
-    }
-  }
-
-  async function md2img(markdown: string): Promise<Buffer> {
-    const html = await markdownToPoster(markdown, cfg.theme);
-    const page = await ctx.puppeteer.page();
-    try {
-      await page.setContent(html, { waitUntil: "networkidle0" });
-      await page.setViewport({ width: 800, height: 100 });
-      await page.bringToFront();
-      const buffer = await page.screenshot({ fullPage: true });
-      return buffer;
-    } finally {
-      await page.close();
     }
   }
 
@@ -478,7 +459,7 @@ export function apply(ctx: Context, cfg: Config) {
     if (forceTextOutput) {
       msgId = await sendReply(session, `${replyHeader}\n\n${reply}`, true);
     } else {
-      const buffer = await md2img(reply);
+      const buffer = await ctx.markdownToImage.convertToImage(reply);
       msgId = await sendReply(
         session,
         `${replyHeader}\n${h.image(buffer, "image/png")}`,
@@ -583,7 +564,7 @@ export function apply(ctx: Context, cfg: Config) {
       // 发送创建成功的带预览图的消息
       const cardCharName = characterData.name || "未知";
       const presetPreview = `# 房间: ${name} (人设: ${cardCharName})\n\n**房主:** @${session.author.nick}\n\n---\n\n${preset}`;
-      const buffer = await md2img(presetPreview);
+      const buffer = await ctx.markdownToImage.convertToImage(presetPreview);
       await session.send(
         h("p", `房间「${name}」创建成功！`, h.image(buffer, "image/png"))
       );
@@ -648,7 +629,9 @@ export function apply(ctx: Context, cfg: Config) {
             } |`
         )
         .join("\n");
-      const buffer = await md2img(`${title}\n${tableRows}`);
+      const buffer = await ctx.markdownToImage.convertToImage(
+        `${title}\n${tableRows}`
+      );
       return h.image(buffer, "image/png");
     });
 
@@ -664,7 +647,7 @@ export function apply(ctx: Context, cfg: Config) {
       if (options.text) {
         return `房间「${room.name}」的预设内容如下：\n\n${room.preset}`;
       } else {
-        const buffer = await md2img(
+        const buffer = await ctx.markdownToImage.convertToImage(
           `# ${room.name} 的预设\n\n---\n\n${room.preset}`
         );
         return h.image(buffer, "image/png");
@@ -806,7 +789,7 @@ export function apply(ctx: Context, cfg: Config) {
           reply = reply.substring(thinkTagIndex + "</think>".length).trim();
         }
       }
-      const buffer = await md2img(reply);
+      const buffer = await ctx.markdownToImage.convertToImage(reply);
       const msgId = await sendReply(
         session,
         `${room.name} (${messagesToResend.length}) (重)\n${h.image(
@@ -912,7 +895,7 @@ export function apply(ctx: Context, cfg: Config) {
           )
           .join("\n\n---\n\n");
         try {
-          const buffer = await md2img(msgContent);
+          const buffer = await ctx.markdownToImage.convertToImage(msgContent);
           await session.send(h.image(buffer, "image/png"));
         } catch (error) {
           logger.error(`Error sending history chunk ${i + 1}:`, error);
@@ -921,62 +904,4 @@ export function apply(ctx: Context, cfg: Config) {
       }
     }
   );
-
-  // --- Theming & Styling ---
-
-  function getThemeStyles(theme: "light" | "black-gold"): string {
-    const FONT_STYLES = `font-family: "Source Sans Pro", "Noto Sans SC", sans-serif;`;
-
-    if (theme === "black-gold") {
-      return `
-        @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;700&family=Noto+Sans+SC:wght@400;700&display=swap');
-        :root {
-          --bg-color: #1a1a1a;
-          --surface-color: #2c2c2c;
-          --primary-text-color: #e8e6e3;
-          --secondary-text-color: #b0b0b0;
-          --accent-color: #ffd700; /* Vibrant Gold */
-          --border-color: #444;
-          --code-bg: #222;
-        }
-        body { background-color: var(--bg-color); color: var(--primary-text-color); ${FONT_STYLES} line-height: 1.8; font-size: 20px; padding: 3rem; margin: 0; }
-        h1, h2, h3, h4, h5, h6 { ${FONT_STYLES} color: var(--accent-color); font-weight: 700; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5em; margin-top: 1.5em; text-shadow: 0 0 5px rgba(255, 215, 0, 0.3); }
-        p { margin-bottom: 1.2em; }
-        a { color: var(--accent-color); text-decoration: none; font-weight: 600; }
-        strong { color: var(--accent-color); }
-        blockquote { border-left: 4px solid var(--accent-color); background-color: var(--surface-color); padding: 1em 1.5em; margin: 1.5em 0; color: var(--secondary-text-color); font-style: italic; }
-        code { background-color: var(--code-bg); padding: 0.2em 0.4em; border-radius: 4px; font-family: "Fira Code", monospace; font-size: 0.9em; border: 1px solid var(--border-color); }
-        pre { background-color: var(--code-bg); color: #abb2bf; padding: 1.5em; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; border: 1px solid var(--border-color); }
-        pre code { background-color: transparent; padding: 0; border: none; }
-        table { width: 100%; border-collapse: collapse; margin: 1.5em 0; background-color: var(--surface-color); border: 1px solid var(--border-color); }
-        th, td { border: 1px solid var(--border-color); padding: 0.8em 1em; text-align: left; }
-        th { background-color: var(--bg-color); color: var(--accent-color); font-weight: bold; }
-        hr { border: 0; border-top: 1px solid var(--border-color); margin: 2em 0; }
-      `;
-    }
-
-    return `
-      @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;700&family=Noto+Sans+SC:wght@400;700&display=swap');
-      body { margin: 0; padding: 3.5rem; background-color: #f7f9fc; ${FONT_STYLES} font-size: 20px; line-height: 1.8; color: #333; }
-      h1,h2,h3 { color: #1a202c; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5em; margin-top: 1.5em;}
-      p { margin-bottom: 1.2em; } a { color: #2563eb; text-decoration: none; } strong { color: #1a202c; }
-      blockquote { border-left: 4px solid #2563eb; background-color: #f0f4ff; padding: 1em 1.5em; margin: 1.5em 0; color: #4a5568; }
-      code { background-color: #edf2f7; padding: 0.2em 0.4em; border-radius: 4px; font-family: "Fira Code", monospace; font-size: 0.9em; }
-      pre { background-color: #1a202c; color: #e2e8f0; padding: 1.5em; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; }
-      pre code { background-color: transparent; padding: 0; }
-      table { width: 100%; border-collapse: collapse; margin: 1.5em 0; }
-      th, td { border: 1px solid #e2e8f0; padding: 0.8em 1em; text-align: left; }
-      th { background-color: #edf2f7; }
-    `;
-  }
-
-  async function markdownToPoster(
-    markdown: string,
-    theme: "light" | "black-gold"
-  ): Promise<string> {
-    const htmlContent = await marked.parse(markdown);
-    return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><style>${getThemeStyles(
-      theme
-    )}</style></head><body>${htmlContent}</body></html>`;
-  }
 }
